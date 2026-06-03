@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Active Survival 3D</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+</head>
+<body>
+<div id="game-container">
+    <canvas id="game-canvas" style="position: absolute; top: 0; left: 0; z-index: 1;"></canvas>
+    <div id="ui-layer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; padding: 20px; box-sizing: border-box; color: #ffffff;">
+
+        <div id="schedule-panel" style="background: rgba(0, 0, 0, 0.7); padding: 15px; width: 220px; border: 1px solid #333; position: absolute; top: 20px; right: 20px; pointer-events: auto;">
+            <h2 style="margin-top: 0; font-size: 1.2rem; color: #e2a94a;">Status</h2>
+            <p style="margin: 5px 0;">Time: <span id="game-time">08:00</span></p>
+            <p style="margin: 5px 0;">Task: <span id="current-task">Idle</span></p>
+            <p style="margin: 10px 0 0 0; font-size: 0.8rem; color: #777;">[I] Inventory &nbsp; [C] Crafting<br>[Z] Sleep / Fast Forward</p>
+        </div>
+
+        <div id="stats-panel" style="position: absolute; bottom: 20px; left: 20px; background: rgba(0, 0, 0, 0.6); padding: 10px; width: 180px; border-radius: 4px; pointer-events: auto;">
+            <div class="vital-container">
+                <div class="vital-header"><span>💧 Hydration</span> <span id="stat-hydration-text">100%</span></div>
+                <div class="vital-bar-bg"><div id="bar-hydration" class="vital-bar fill-hydration" style="width: 100%;"></div></div>
+            </div>
+            <div class="vital-container" style="margin-bottom: 0;">
+                <div class="vital-header"><span>🍖 Satiety</span> <span id="stat-satiety-text">100%</span></div>
+                <div class="vital-bar-bg"><div id="bar-satiety" class="vital-bar fill-satiety" style="width: 100%;"></div></div>
+            </div>
+        </div>
+
+        <div id="crafting-panel" style="display: none; background: rgba(0, 0, 0, 0.85); padding: 15px; width: 340px; border: 1px solid #333; position: absolute; top: 20px; left: 20px; pointer-events: auto;">
+            <h2 style="margin-top: 0; font-size: 1.2rem; color: #e67e22;">Hand Crafting</h2>
+            <div class="recipe"><span>Stone Axe (2 Stick, 2 Pebble)</span><button id="craft-axe" class="btn-craft">Craft</button></div>
+            <div class="recipe"><span>Stone Pickaxe (2 Stick, 3 Pebble)</span><button id="craft-pickaxe" class="btn-craft">Craft</button></div>
+            <div class="recipe"><span>Crafting Table (10 Wood)</span><button id="craft-table" class="btn-craft">Place</button></div>
+            <div id="advanced-recipes" style="display: none; margin-top: 15px; border-top: 1px solid #555; padding-top: 15px;">
+                <h3 style="margin-top: 0; font-size: 1rem; color: #3498db;">Workbench</h3>
+                <div class="recipe"><span>Wood Sword (5 Wood, 2 Stick)</span><button id="craft-sword" class="btn-craft">Craft</button></div>
+                <div class="recipe"><span>Leather Helmet (5 Leather)</span><button id="craft-helmet" class="btn-craft">Craft</button></div>
+            </div>
+        </div>
+
+        <div id="inventory-panel" style="display: none; background: rgba(0, 0, 0, 0.85); padding: 15px; width: 300px; border: 1px solid #333; position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); pointer-events: auto;">
+            <h2 style="margin-top: 0; font-size: 1.2rem; color: #9b59b6; margin-bottom: 15px;">Equipment</h2>
+            <div class="equip-wrapper">
+                <div class="equip-col">
+                    <div id="equip-helmet" class="inv-slot empty">Helm</div>
+                    <div id="equip-chest" class="inv-slot empty">Chest</div>
+                    <div id="equip-pants" class="inv-slot empty">Pants</div>
+                    <div id="equip-shoes" class="inv-slot empty">Shoes</div>
+                </div>
+                <div class="equip-col">
+                    <div id="equip-axe" class="inv-slot empty">Axe</div>
+                    <div id="equip-pickaxe" class="inv-slot empty">Pick</div>
+                    <div id="equip-weapon" class="inv-slot empty">Weap</div>
+                </div>
+            </div>
+            <h2 style="margin-top: 0; font-size: 1.2rem; color: #9b59b6;">Inventory</h2>
+            <div id="inventory-grid" class="inv-grid"></div>
+        </div>
+    </div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
