@@ -1,4 +1,4 @@
-import { getElevation } from '../engine/TerrainManager.js';
+import { getElevation } from '../engine/Renderer.js';
 
 export class UIManager {
     constructor(stateManager) {
@@ -39,7 +39,6 @@ export class UIManager {
         this.ghostPlacementActive = false;
         this.ghostItemType = null;
 
-        // Map Mechanics
         this.minimapCanvas = document.getElementById('minimap');
         this.minimapCtx = this.minimapCanvas?.getContext('2d');
 
@@ -84,7 +83,6 @@ export class UIManager {
         this.fullmapCanvas?.addEventListener('mouseup', () => isDraggingMap = false);
         this.fullmapCanvas?.addEventListener('mouseleave', () => isDraggingMap = false);
 
-
         document.addEventListener('keydown', (e) => {
             if (e.key.toLowerCase() === 'i') {
                 this.isInventoryOpen = !this.isInventoryOpen;
@@ -116,7 +114,6 @@ export class UIManager {
         if (!ctx) return;
 
         ctx.save();
-        // Base Ocean Color
         ctx.fillStyle = '#1a5b7d';
         ctx.fillRect(0, 0, width, height);
 
@@ -124,19 +121,18 @@ export class UIManager {
         ctx.scale(zoom, zoom);
         ctx.translate(-player.x - panX, -player.y - panY);
 
-        // Dynamically compute the procedural terrain for the map!
         const startX = player.x + panX - (width/2)/zoom;
         const endX = player.x + panX + (width/2)/zoom;
         const startZ = player.y + panY - (height/2)/zoom;
         const endZ = player.y + panY + (height/2)/zoom;
 
-        const step = Math.max(10, 80 / zoom); // Dynamic resolution for performance
+        const step = Math.max(3, 15 / zoom);
 
         for(let x = Math.floor(startX/step)*step; x < endX; x+=step) {
             for(let z = Math.floor(startZ/step)*step; z < endZ; z+=step) {
                 const elev = getElevation(x, z);
                 if (elev > 2) {
-                    if (elev > 400) ctx.fillStyle = '#ffffff';
+                    if (elev > 400) ctx.fillStyle = '#cccccc';
                     else if (elev > 250) ctx.fillStyle = '#666666';
                     else if (elev <= 5) ctx.fillStyle = '#e6d690';
                     else ctx.fillStyle = '#39602b';
@@ -146,7 +142,6 @@ export class UIManager {
             }
         }
 
-        // Draw Player Built Structures
         resources.forEach(r => {
             if (['crafting_table', 'furnace', 'campfire'].includes(r.type)) {
                 ctx.fillStyle = r.color;
@@ -154,7 +149,6 @@ export class UIManager {
             }
         });
 
-        // Draw Player Arrow
         ctx.translate(player.x, player.y);
         ctx.rotate(-player.rotation);
         ctx.fillStyle = '#e74c3c';
@@ -330,12 +324,45 @@ export class UIManager {
         const m = state.time.minutes.toString().padStart(2, '0');
         if (this.elements.time && this.elements.time.innerText !== `${h}:${m}`) this.elements.time.innerText = `${h}:${m}`;
 
-        // Update Map UIs
         this.drawMap(this.minimapCtx, 220, 220, s, state.resources, 0.15, 0, 0);
         if (this.isMapOpen && this.fullmapCanvas) {
             this.fullmapCanvas.width = this.fullmapCanvas.clientWidth;
             this.fullmapCanvas.height = this.fullmapCanvas.clientHeight;
             this.drawMap(this.fullmapCtx, this.fullmapCanvas.width, this.fullmapCanvas.height, s, state.resources, this.mapZoom, this.mapPanX, this.mapPanY);
+        }
+
+        // Manage button disabled states based on required resources
+        if (this.isCraftingOpen || nearTable || nearFurnace || nearCampfire) {
+            const recipes = {
+                'craft-rope': { fiber: 3 },
+                'craft-axe': { stick: 2, pebble: 2 },
+                'craft-pickaxe': { stick: 2, pebble: 3 },
+                'craft-campfire': { wood: 5, pebble: 5 },
+                'craft-table': { wood: 10 },
+                'craft-bow': { wood: 2, rope: 2 },
+                'craft-arrow': { stick: 1, pebble: 1 },
+                'craft-furnace': { stone: 10 },
+                'craft-sword': { wood: 5, stick: 2 },
+                'craft-helmet': { leather: 5 },
+                'action-smelt': { iron_ore: 1, coal: 1 },
+                'action-cook': { raw_meat: 1, wood: 1 }
+            };
+            for (const [btnId, ingredients] of Object.entries(recipes)) {
+                const btn = document.getElementById(btnId);
+                if (btn) {
+                    let canCraft = window.godMode;
+                    if (!canCraft) {
+                        canCraft = true;
+                        for (const [item, amt] of Object.entries(ingredients)) {
+                            if (!s.hasEnough(item, amt)) {
+                                canCraft = false;
+                                break;
+                            }
+                        }
+                    }
+                    btn.disabled = !canCraft;
+                }
+            }
         }
     }
 }

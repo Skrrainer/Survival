@@ -1,11 +1,10 @@
-import { getElevation } from '../engine/TerrainManager.js';
+import { getElevation } from '../engine/Renderer.js';
 
 export class AISystem {
     update(deltaTime, state) {
         if (!state.survivor) return;
         let survivor = state.survivor;
 
-        // Display Death Notification overrides completely
         if (survivor.deathTimer > 0) {
             survivor.deathTimer -= deltaTime;
             survivor.currentTask = 'YOU DIED! Starved/Dehydrated.';
@@ -27,7 +26,7 @@ export class AISystem {
                 survivor.stats.satiety = 100;
                 survivor.x = 0; survivor.y = 0;
                 survivor.inventory.fill(null);
-                survivor.deathTimer = 3.0; // Sets the pause timer
+                survivor.deathTimer = 3.0;
                 return;
             }
 
@@ -47,7 +46,6 @@ export class AISystem {
         survivor.stats.hydration = Math.max(0, Math.min(100, survivor.stats.hydration));
         survivor.stats.satiety   = Math.max(0, Math.min(100, survivor.stats.satiety));
 
-        // --- LAKE DETECTION ---
         survivor.inLake = false;
         state.resources.forEach(r => {
             if (r.type === 'water' && Math.hypot(r.x - survivor.x, r.y - survivor.y) < r.size) {
@@ -55,7 +53,6 @@ export class AISystem {
             }
         });
 
-        // --- PROJECTILES LOGIC ---
         if (!state.projectiles) state.projectiles = [];
         state.projectiles.forEach(p => {
             p.x += p.vx * deltaTime;
@@ -75,7 +72,6 @@ export class AISystem {
         });
         state.projectiles = state.projectiles.filter(p => p.life > 0 && p.y > -10);
 
-        // --- ANIMAL AI LOGIC ---
         if (!state.animals) state.animals = [];
         state.animals.forEach(a => {
             if (a.hp <= 0) {
@@ -109,12 +105,10 @@ export class AISystem {
         });
         state.animals = state.animals.filter(a => !a.dead);
 
-        // --- MOVEMENT & DYNAMIC STOPPING LOGIC ---
         const dx = survivor.targetX - survivor.x;
         const dy = survivor.targetY - survivor.y;
         const distanceToTarget = Math.sqrt(dx * dx + dy * dy);
 
-        // Prevent clipping into meshes!
         let stopDistance = 5;
         if (survivor.targetResource) {
             if (survivor.targetResource.type === 'water') stopDistance = 15;
@@ -124,9 +118,16 @@ export class AISystem {
         if (distanceToTarget > stopDistance) {
             survivor.x += (dx / distanceToTarget) * survivor.speed * deltaTime;
             survivor.y += (dy / distanceToTarget) * survivor.speed * deltaTime;
-            survivor.rotation = Math.atan2(dx, dy);
-            survivor.isMoving = true;
 
+            // Smooth Rotation Interpolation
+            const targetRotation = Math.atan2(dx, dy);
+            survivor.rotation = survivor.rotation || 0;
+            let diff = targetRotation - survivor.rotation;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            survivor.rotation += diff * 15 * deltaTime;
+
+            survivor.isMoving = true;
             survivor.isBowing = false;
             survivor.isChopping = false;
             survivor.isMining = false;
@@ -142,9 +143,13 @@ export class AISystem {
         } else {
             survivor.isMoving = false;
 
-            // Re-orient perfectly towards the object upon arrival
             if (survivor.targetResource && distanceToTarget > 0.1) {
-                survivor.rotation = Math.atan2(dx, dy);
+                const targetRotation = Math.atan2(dx, dy);
+                survivor.rotation = survivor.rotation || 0;
+                let diff = targetRotation - survivor.rotation;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                survivor.rotation += diff * 15 * deltaTime;
             }
 
             if (survivor.targetResource && !survivor.targetResource.isFalling) {

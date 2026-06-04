@@ -1,5 +1,5 @@
 import { ResourceNode } from '../entities/ResourceNode.js';
-import { getElevation } from '../engine/TerrainManager.js';
+import { getElevation } from '../engine/Renderer.js';
 
 export class ResourceSystem {
     init(stateManager) {
@@ -55,12 +55,13 @@ export class ResourceSystem {
 
                 const elev = getElevation(x, y);
                 if (elev > minElev && elev < maxElev) {
-                    state.resources.push(new ResourceNode(type, x, y));
+                    let node = new ResourceNode(type, x, y);
+                    if (type === 'water') node.size = 12;
+                    state.resources.push(node);
                 }
             }
         };
 
-        // Note: Removed the "Water" nodes completely, as lakes are now carved mathematically out of the terrain logic!
         trySpawn('tree', 15, 6, 250);
         trySpawn('rock', 8, 10, 500);
         trySpawn('iron_node', 5, 300, 800);

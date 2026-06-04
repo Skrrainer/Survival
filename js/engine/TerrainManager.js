@@ -7,12 +7,11 @@ export function getElevation(x, z) {
     const details = Math.sin(x * 0.005) * Math.cos(z * 0.005) * 40;
     let elev = continent + mountains + plains + details - 880;
 
-    // Mathematically carve gorgeous lakes directly into the terrain, forcing them below Sea Level (0)
+    // FIX: Inland Lake Logic Rebuilt. Creates shallow, smooth basins on land instead of bottomless craters!
     const lakeNoise = Math.sin(x * 0.002) * Math.cos(z * 0.002);
     if (lakeNoise > 0.8) {
-        const depth = (lakeNoise - 0.8) * 5.0; // Scales from 0.0 to 1.0
-        // Lerp the elevation violently down to -20 to guarantee water and sand shores!
-        elev = elev * (1.0 - depth) - (20.0 * depth);
+        const depth = (lakeNoise - 0.8) * 5.0; // Scales 0 to 1
+        elev -= depth * 35; // Drops the terrain a maximum of 35 units to create a natural valley basin
     }
 
     return elev;
@@ -44,7 +43,7 @@ export class TerrainManager {
         this.ground.userData = { isGround: true };
         this.scene.add(this.ground);
 
-        // --- GLOBAL OCEAN (Fills both the edges of continents AND the carved lakes) ---
+        // --- GLOBAL OCEAN ---
         const seaGeo = new THREE.PlaneGeometry(this.size, this.size);
         seaGeo.rotateX(-Math.PI / 2);
         const seaMat = new THREE.MeshStandardMaterial({
@@ -83,8 +82,7 @@ export class TerrainManager {
                     
                     float lakeNoise = sin(x * 0.002) * cos(z * 0.002);
                     if (lakeNoise > 0.8) {
-                        float depth = (lakeNoise - 0.8) * 5.0;
-                        elev = elev * (1.0 - depth) - (20.0 * depth);
+                        elev -= (lakeNoise - 0.8) * 5.0 * 35.0;
                     }
                     return elev;
                 }
@@ -161,8 +159,11 @@ export class TerrainManager {
                 const elev = getElevation(worldX, worldZ);
                 posAttr.setY(i, elev);
 
-                if (elev <= 5) {
-                    c3.set('#e6d690');
+                // Check lake basin for Sand Coloring
+                const lakeNoise = Math.sin(worldX * 0.002) * Math.cos(worldZ * 0.002);
+
+                if (elev <= 5 || lakeNoise > 0.8) {
+                    c3.set('#e6d690'); // Sand for beaches AND lake basins
                 } else if (elev < 30) {
                     const t = (elev - 5) / 25;
                     c3.set('#e6d690').lerp(new THREE.Color('#39602b'), t);

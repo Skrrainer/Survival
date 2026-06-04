@@ -1,5 +1,12 @@
 import * as THREE from 'three';
-import { getElevation } from './TerrainManager.js';
+
+export function getElevation(x, z) {
+    const continent = Math.cos(x * 0.00005) * Math.cos(z * 0.00005) * 1200;
+    const mountains = Math.sin(x * 0.0002 + 123) * Math.cos(z * 0.0002 + 321) * 800;
+    const plains = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 120;
+    const details = Math.sin(x * 0.005) * Math.cos(z * 0.005) * 40;
+    return continent + mountains + plains + details - 880;
+}
 
 export class Renderer {
     constructor(canvasId) {
@@ -55,11 +62,13 @@ export class Renderer {
         this.ground = new THREE.Mesh(this.groundGeo, groundMat);
         this.ground.receiveShadow = true;
         this.ground.userData = { isGround: true };
+        this.ground.frustumCulled = false;
         this.scene.add(this.ground);
 
         const seaMat = new THREE.MeshStandardMaterial({ color: '#1a5b7d', transparent: true, opacity: 0.8, depthWrite: false });
         this.sea = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000), seaMat);
         this.sea.rotation.x = -Math.PI / 2;
+        this.sea.frustumCulled = false;
         this.scene.add(this.sea);
 
         this.survivorMesh = null;
@@ -74,8 +83,8 @@ export class Renderer {
         this._treeLeavesGeo.translate(0, 2.6, 0);
         this._rockGeo = new THREE.DodecahedronGeometry(1.0);
         this._rockGeo.translate(0, 1.0, 0);
+        this._waterGeo = new THREE.CylinderGeometry(1, 1, 0.1, 16);
 
-        // Reused geometries for Blueberry bush
         this._bushFoliageGeo = new THREE.SphereGeometry(1, 7, 6);
         this._bushFoliageMat = new THREE.MeshStandardMaterial({ color: '#3a6e30', roughness: 0.9, flatShading: true });
         this._bushFoliageBareMat = new THREE.MeshStandardMaterial({ color: '#2a4a20', roughness: 0.9, flatShading: true });
@@ -207,7 +216,6 @@ export class Renderer {
         this.ambientLight.intensity = state.time.ambientLightIntensity;
         this.scene.background = new THREE.Color('#020406').lerp(new THREE.Color('#65a1c9'), state.time.skyTransition);
 
-        // --- SURVIVOR RENDERING & FIXED ONE-HANDED ANIMATIONS ---
         if (state.survivor) {
             if (!this.survivorMesh) {
                 this.survivorMesh = new THREE.Group();
@@ -222,6 +230,17 @@ export class Renderer {
                 torso.position.y = 4;
                 torso.castShadow = true;
                 this.upperBody.add(torso);
+
+                // Add distinguishing features so we can easily tell front from back
+                const backpack = new THREE.Mesh(new THREE.BoxGeometry(4, 6, 2.5), new THREE.MeshStandardMaterial({ color: '#27ae60' }));
+                backpack.position.set(0, 6, -2.5); // Back
+                backpack.castShadow = true;
+                this.upperBody.add(backpack);
+
+                const visor = new THREE.Mesh(new THREE.BoxGeometry(3.5, 1, 2), new THREE.MeshStandardMaterial({ color: '#222' }));
+                visor.position.set(0, 12.5, 2.5); // Front (+Z)
+                visor.castShadow = true;
+                this.upperBody.add(visor);
 
                 const head = new THREE.Mesh(new THREE.SphereGeometry(3), new THREE.MeshStandardMaterial({ color: '#f1c27d' }));
                 head.position.y = 12;
@@ -240,6 +259,30 @@ export class Renderer {
                 this.rightArm.castShadow = true;
                 this.upperBody.add(this.rightArm);
 
+                this.toolGroup = new THREE.Group();
+                this.toolGroup.position.set(0, -8, 0);
+                this.rightArm.add(this.toolGroup);
+
+                this.axeVisual = new THREE.Group();
+                const axeHandle = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 8), new THREE.MeshStandardMaterial({color:'#5c4033'}));
+                const axeHead = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 0.5), new THREE.MeshStandardMaterial({color:'#7f8c8d'}));
+                axeHead.position.set(1.5, 3, 0);
+                this.axeVisual.add(axeHandle, axeHead);
+                this.axeVisual.rotation.x = Math.PI / 2;
+                this.toolGroup.add(this.axeVisual);
+
+                this.pickaxeVisual = new THREE.Group();
+                const pickHandle = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 8), new THREE.MeshStandardMaterial({color:'#5c4033'}));
+                const pickHead = new THREE.Mesh(new THREE.BoxGeometry(4.5, 1, 0.5), new THREE.MeshStandardMaterial({color:'#7f8c8d'}));
+                pickHead.position.set(0, 3, 0);
+                this.pickaxeVisual.add(pickHandle, pickHead);
+                this.pickaxeVisual.rotation.x = Math.PI / 2;
+                this.toolGroup.add(this.pickaxeVisual);
+
+                this.bowVisual = new THREE.Mesh(new THREE.TorusGeometry(4, 0.3, 8, 20, Math.PI), new THREE.MeshStandardMaterial({color:'#5c4033'}));
+                this.bowVisual.rotation.set(Math.PI/2, 0, 0); // Rotated so it's pointing forward 
+                this.toolGroup.add(this.bowVisual);
+
                 const legGeo = new THREE.CylinderGeometry(1.2, 1.2, 8);
                 legGeo.translate(0, -4, 0);
                 this.leftLeg = new THREE.Mesh(legGeo, new THREE.MeshStandardMaterial({ color: '#2c3e50' }));
@@ -254,7 +297,6 @@ export class Renderer {
                 this.scene.add(this.survivorMesh);
             }
 
-            // Hide body entirely if dead message is playing
             if (state.survivor.deathTimer > 0) {
                 this.survivorMesh.visible = false;
             } else {
@@ -262,7 +304,16 @@ export class Renderer {
                 const inWater = playerY < 2;
 
                 this.survivorMesh.position.set(px, inWater ? Math.max(playerY - 6, 0) : playerY, pz);
-                if (state.survivor.rotation !== undefined) this.survivorMesh.rotation.y = state.survivor.rotation;
+
+                if (state.aiming && state.aimTarget) {
+                    this.survivorMesh.rotation.y = Math.atan2(state.aimTarget.x - px, state.aimTarget.z - pz);
+                } else if (state.survivor.rotation !== undefined) {
+                    this.survivorMesh.rotation.y = state.survivor.rotation;
+                }
+
+                this.axeVisual.visible = !!state.survivor.isChopping;
+                this.pickaxeVisual.visible = !!state.survivor.isMining;
+                this.bowVisual.visible = !!state.aiming;
 
                 if (inWater) {
                     this.survivorBody.rotation.x = Math.PI / 2;
@@ -282,13 +333,11 @@ export class Renderer {
                     } else if (state.survivor.isChopping) {
                         const swing = -Math.PI / 2 + Math.sin(Date.now() * 0.015) * 1.5;
                         this.upperBody.rotation.x = -Math.PI / 12;
-                        // Right Hand ONLY swings!
                         this.rightArm.rotation.set(swing, 0, 0);
                         this.leftArm.rotation.set(-Math.PI / 8, 0, 0);
                     } else if (state.survivor.isMining) {
                         const swing = -Math.PI / 2 + Math.sin(Date.now() * 0.015) * 1.5;
                         this.upperBody.rotation.x = -Math.PI / 8;
-                        // Right Hand ONLY swings!
                         this.rightArm.rotation.set(swing, 0, 0);
                         this.leftArm.rotation.set(-Math.PI / 8, 0, 0);
                     } else {
@@ -313,15 +362,19 @@ export class Renderer {
             }
         }
 
-        // --- ACCURATE BOW AIMING TRAJECTORY ---
         if (state.aiming && state.aimTarget) {
+            // Dynamic Charge Calculator
+            const holdTime = (Date.now() - (state.aimStartTime || Date.now())) / 1000;
+            const chargeRatio = Math.min(1, holdTime / 1.5);
+            const power = 50 + ((state.aimMaxPower || 50) - 50) * chargeRatio;
+
             const points = [];
             let ax = px, ay = playerY + 10, az = pz;
-            const power = state.aimPower;
             const dx = state.aimTarget.x - px, dz = state.aimTarget.z - pz;
             const angle = Math.atan2(dz, dx);
             let vx = Math.cos(angle) * power, vy = power * 0.4, vz = Math.sin(angle) * power;
-            const dt = 0.016; // Perfectly matched integration physics
+
+            const dt = 0.016;
             for(let i=0; i<150; i++) {
                 points.push(new THREE.Vector3(ax, ay, az));
                 ax += vx * dt; ay += vy * dt; az += vz * dt;
@@ -332,7 +385,8 @@ export class Renderer {
                 this.trajLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: 0xff0000 }));
                 this.scene.add(this.trajLine);
             } else {
-                this.trajLine.geometry.setFromPoints(points);
+                this.trajLine.geometry.dispose();
+                this.trajLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
                 this.trajLine.visible = true;
             }
         } else if (this.trajLine) {
@@ -395,6 +449,11 @@ export class Renderer {
                     mesh.castShadow = true; mesh.receiveShadow = true;
                     mesh.scale.setScalar(r.size);
                     mesh.userData = { offset: 0 };
+                } else if (r.type === 'water') {
+                    mesh = new THREE.Mesh(this._waterGeo, new THREE.MeshStandardMaterial({ color: '#2980b9', transparent: true, opacity: 0.65, depthWrite: false }));
+                    mesh.scale.set(r.size, 1, r.size);
+                    mesh.receiveShadow = true;
+                    mesh.userData = { offset: 0.5 };
                 } else if (r.type === 'stick') {
                     mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 8, 6), new THREE.MeshStandardMaterial({ color: r.color }));
                     mesh.rotation.z = Math.PI / 2; mesh.rotation.y = Math.random() * Math.PI;
@@ -435,8 +494,7 @@ export class Renderer {
                     const fire = new THREE.Mesh(new THREE.ConeGeometry(3, 6), new THREE.MeshBasicMaterial({ color: '#e74c3c' }));
                     fire.position.y = 4; mesh.add(fire);
 
-                    // MASSIVELY increased PointLight intensity to pierce darkness
-                    const light = new THREE.PointLight('#ff7700', 5000, 300);
+                    const light = new THREE.PointLight('#ff7700', 2000, 600);
                     light.position.y = 15;
                     mesh.add(light);
 

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getElevation } from '../engine/Renderer.js';
 
 export class InputSystem {
     init(canvasId, rendererInstance, stateManager, uiManager) {
@@ -27,8 +28,14 @@ export class InputSystem {
             } else if (e.button === 2) {
                 const s = this.stateManager.getState().survivor;
                 if (s && s.equipped.weapon === 'bow') {
+                    s.targetResource = null;
+                    s.targetX = s.x;
+                    s.targetY = s.y;
+                    s.currentTask = 'Aiming';
                     this.isAiming = true;
                     this.stateManager.getState().aiming = true;
+                    this.stateManager.getState().aimStartTime = Date.now();
+                    this.stateManager.getState().aimMaxPower = 50;
                     this.updateAim(e);
                 }
             }
@@ -49,6 +56,13 @@ export class InputSystem {
                 this.lastY = e.clientY;
             } else if (this.isAiming) {
                 this.updateAim(e);
+            }
+        });
+
+        this.canvas.addEventListener('pointerleave', () => {
+            if (this.isAiming) {
+                this.isAiming = false;
+                this.stateManager.getState().aiming = false;
             }
         });
 
@@ -107,7 +121,7 @@ export class InputSystem {
             const dz = pt.z - s.y;
             const dist = Math.sqrt(dx * dx + dz * dz);
             state.aimTarget = pt;
-            state.aimPower = Math.min(dist * 1.5, 300);
+            state.aimMaxPower = Math.min(dist * 1.5, 300);
         }
     }
 
@@ -116,17 +130,27 @@ export class InputSystem {
         state.aiming = false;
         const s = state.survivor;
 
+        if (Date.now() - (s.lastShotTime || 0) < 500) {
+            s.currentTask = 'Reloading...';
+            return;
+        }
+        s.lastShotTime = Date.now();
+
         if (s.removeItem('arrow', 1)) {
             const target = state.aimTarget;
             const dx = target.x - s.x;
             const dz = target.z - s.y;
             const angle = Math.atan2(dz, dx);
-            const power = state.aimPower;
+
+            // Calculate final power based on hold time (1.5s to max charge)
+            const holdTime = (Date.now() - state.aimStartTime) / 1000;
+            const chargeRatio = Math.min(1, holdTime / 1.5);
+            const power = 50 + (state.aimMaxPower - 50) * chargeRatio;
 
             if (!state.projectiles) state.projectiles = [];
             state.projectiles.push({
                 x: s.x,
-                y: this.rendererInstance.getElevation?.(s.x, s.y) || 10,
+                y: getElevation(s.x, s.y) + 10,
                 z: s.y,
                 vx: Math.cos(angle) * power,
                 vy: power * 0.4,
@@ -170,7 +194,6 @@ export class InputSystem {
         }
 
         if (!hitResource && groundPoint) {
-            // FIX: If the terrain point clicked is below Y=2, treat it as a water interaction!
             if (groundPoint.y <= 2) {
                 hitResource = { type: 'water', x: groundPoint.x, y: groundPoint.z, size: 5, isFalling: false };
             } else {
@@ -199,7 +222,10 @@ export class InputSystem {
                 blueberry_bush: 'Walking to Berry Bush',
                 crafting_table: 'Walking to Workbench',
                 furnace: 'Walking to Furnace',
-                campfire: 'Walking to Campfire'
+                campfire: 'Walking to Campfire',
+                raw_meat: 'Walking to Loot',
+                leather: 'Walking to Loot',
+                cooked_meat: 'Walking to Loot'
             };
             state.survivor.currentTask = taskNames[hitResource.type] ?? 'Walking';
 
