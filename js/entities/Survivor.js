@@ -9,6 +9,7 @@ export class Survivor {
         this.targetY = y;
         this.targetResource = null;
         this.actionTimer = 0;
+        this.deathTimer = 0;
         this.inLake = false;
 
         this.inventoryCapacity = 15;
@@ -59,6 +60,8 @@ export class Survivor {
     }
 
     hasEnough(itemType, amount) {
+        if (window.godMode) return true; // God Mode Override
+
         let total = 0;
         this.inventory.forEach(slot => {
             if (slot !== null && slot.type === itemType) total += slot.amount;
@@ -67,6 +70,8 @@ export class Survivor {
     }
 
     removeItem(itemType, amount) {
+        if (window.godMode) return true; // God Mode Override
+
         if (!this.hasEnough(itemType, amount)) return false;
         let amountLeft = amount;
 

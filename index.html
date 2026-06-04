@@ -12,13 +12,20 @@
 <body>
 <div id="game-container">
     <canvas id="game-canvas" style="position: absolute; top: 0; left: 0; z-index: 1;"></canvas>
+
     <div id="ui-layer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; padding: 20px; box-sizing: border-box; color: #ffffff;">
 
-        <div id="schedule-panel" style="background: rgba(0, 0, 0, 0.7); padding: 15px; width: 220px; border: 1px solid #333; position: absolute; top: 20px; right: 20px; pointer-events: auto;">
+        <!-- Minimap Container -->
+        <div id="minimap-container" style="position: absolute; top: 20px; right: 20px; width: 220px; height: 220px; border: 2px solid #e2a94a; background: #000; cursor: pointer; pointer-events: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+            <canvas id="minimap" width="220" height="220" style="width: 100%; height: 100%;"></canvas>
+        </div>
+
+        <div id="schedule-panel" style="background: rgba(0, 0, 0, 0.7); padding: 15px; width: 220px; border: 1px solid #333; position: absolute; top: 260px; right: 20px; pointer-events: auto;">
             <h2 style="margin-top: 0; font-size: 1.2rem; color: #e2a94a;">Status</h2>
             <p style="margin: 5px 0;">Time: <span id="game-time">08:00</span></p>
             <p style="margin: 5px 0;">Task: <span id="current-task">Idle</span></p>
-            <p style="margin: 10px 0 0 0; font-size: 0.8rem; color: #777;">[Left Click + Drag] Spin Camera<br>[Right Click + Drag] Aim Bow<br>[I] Inventory &nbsp; [C] Crafting<br>[Z] Sleep / Fast Forward</p>
+            <p style="margin: 10px 0 0 0; font-size: 0.8rem; color: #777;">[Drag] Spin Camera<br>[R-Click Drag] Aim Bow<br>[I] Inventory &nbsp; [C] Crafting</p>
+            <button id="btn-godmode" style="margin-top: 15px; width: 100%; background: #9b59b6; color: white; border: none; padding: 8px; cursor: pointer; font-weight: bold; border-radius: 4px;">Enable God Mode</button>
         </div>
 
         <div id="stats-panel" style="position: absolute; bottom: 20px; left: 20px; background: rgba(0, 0, 0, 0.6); padding: 10px; width: 180px; border-radius: 4px; pointer-events: auto;">
@@ -82,6 +89,16 @@
             <h2 style="margin-top: 0; font-size: 1.2rem; color: #9b59b6;">Inventory</h2>
             <div id="inventory-grid" class="inv-grid"></div>
         </div>
+
+        <!-- Full Map Modal -->
+        <div id="map-modal" style="display: none; position: absolute; top: 10%; left: 10%; width: 80%; height: 80%; background: rgba(0,0,0,0.9); border: 2px solid #e2a94a; z-index: 10; pointer-events: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+            <div style="padding: 10px 15px; background: #222; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444;">
+                <span style="color: #e2a94a; font-size: 1.2rem; font-weight: bold;">World Map - (Scroll to Zoom, Drag to Pan)</span>
+                <button id="close-map" style="background: #e74c3c; color: white; border: none; cursor: pointer; padding: 5px 15px; font-weight: bold; border-radius: 4px;">Close X</button>
+            </div>
+            <canvas id="fullmap" style="width: 100%; height: calc(100% - 46px); cursor: move;"></canvas>
+        </div>
+
     </div>
 </div>
 <script type="module" src="js/main.js"></script>

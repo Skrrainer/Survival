@@ -1,42 +1,47 @@
+import { getElevation } from '../engine/TerrainManager.js';
+
 export class AISystem {
-
-    // Abstracted elevation fetch so AI can detect if the player stepped into the ocean
-    getElevation(x, z) {
-        const continent = Math.cos(x * 0.00005) * Math.cos(z * 0.00005) * 1200;
-        const mountains = Math.sin(x * 0.0002 + 123) * Math.cos(z * 0.0002 + 321) * 800;
-        const plains = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 120;
-        const details = Math.sin(x * 0.005) * Math.cos(z * 0.005) * 40;
-        return continent + mountains + plains + details - 880;
-    }
-
     update(deltaTime, state) {
         if (!state.survivor) return;
         let survivor = state.survivor;
 
-        // --- HEALTH & SURVIVAL LOGIC ---
-        if (survivor.stats.hydration <= 0 && survivor.stats.satiety <= 0) {
-            survivor.stats.health -= 5 * deltaTime;
-        } else if (survivor.stats.hydration <= 0) {
-            survivor.stats.health -= 2 * deltaTime;
-        } else if (survivor.stats.satiety <= 0) {
-            survivor.stats.health -= 1 * deltaTime;
+        // Display Death Notification overrides completely
+        if (survivor.deathTimer > 0) {
+            survivor.deathTimer -= deltaTime;
+            survivor.currentTask = 'YOU DIED! Starved/Dehydrated.';
+            return;
         }
 
-        if (survivor.stats.health <= 0) {
+        if (!window.godMode) {
+            if (survivor.stats.hydration <= 0 && survivor.stats.satiety <= 0) {
+                survivor.stats.health -= 5 * deltaTime;
+            } else if (survivor.stats.hydration <= 0) {
+                survivor.stats.health -= 2 * deltaTime;
+            } else if (survivor.stats.satiety <= 0) {
+                survivor.stats.health -= 1 * deltaTime;
+            }
+
+            if (survivor.stats.health <= 0) {
+                survivor.stats.health = 100;
+                survivor.stats.hydration = 100;
+                survivor.stats.satiety = 100;
+                survivor.x = 0; survivor.y = 0;
+                survivor.inventory.fill(null);
+                survivor.deathTimer = 3.0; // Sets the pause timer
+                return;
+            }
+
+            if (survivor.currentTask === 'Sleeping') {
+                survivor.stats.hydration -= 0.05 * deltaTime;
+                survivor.stats.satiety  -= 0.03 * deltaTime;
+            } else {
+                survivor.stats.hydration -= 0.3 * deltaTime;
+                survivor.stats.satiety   -= 0.4 * deltaTime;
+            }
+        } else {
             survivor.stats.health = 100;
             survivor.stats.hydration = 100;
             survivor.stats.satiety = 100;
-            survivor.x = 0; survivor.y = 0;
-            survivor.inventory.fill(null);
-            survivor.currentTask = 'Respawned';
-        }
-
-        if (survivor.currentTask === 'Sleeping') {
-            survivor.stats.hydration -= 0.05 * deltaTime;
-            survivor.stats.satiety  -= 0.03 * deltaTime;
-        } else {
-            survivor.stats.hydration -= 0.3 * deltaTime;
-            survivor.stats.satiety   -= 0.4 * deltaTime;
         }
 
         survivor.stats.hydration = Math.max(0, Math.min(100, survivor.stats.hydration));
@@ -104,39 +109,44 @@ export class AISystem {
         });
         state.animals = state.animals.filter(a => !a.dead);
 
-        // --- MOVEMENT LOGIC ---
+        // --- MOVEMENT & DYNAMIC STOPPING LOGIC ---
         const dx = survivor.targetX - survivor.x;
         const dy = survivor.targetY - survivor.y;
         const distanceToTarget = Math.sqrt(dx * dx + dy * dy);
 
-        if (distanceToTarget > 5) {
+        // Prevent clipping into meshes!
+        let stopDistance = 5;
+        if (survivor.targetResource) {
+            if (survivor.targetResource.type === 'water') stopDistance = 15;
+            else stopDistance = survivor.targetResource.size + 4;
+        }
+
+        if (distanceToTarget > stopDistance) {
             survivor.x += (dx / distanceToTarget) * survivor.speed * deltaTime;
             survivor.y += (dy / distanceToTarget) * survivor.speed * deltaTime;
             survivor.rotation = Math.atan2(dx, dy);
             survivor.isMoving = true;
 
-            // Cancel interactions on move
             survivor.isBowing = false;
             survivor.isChopping = false;
             survivor.isMining = false;
             survivor.actionTimer = 0;
 
-            // FIX: Dynamic Task Text! If the player steps in water while walking to a stick, update the UI to "Swimming to Stick"
-            const playerY = this.getElevation(survivor.x, survivor.y);
-            const inWater = playerY < 2 || survivor.inLake;
-
+            const inWater = getElevation(survivor.x, survivor.y) < 2;
             if (inWater) {
-                if (survivor.currentTask.includes('Walking')) {
-                    survivor.currentTask = survivor.currentTask.replace('Walking', 'Swimming');
-                }
+                if (survivor.currentTask.includes('Walking')) survivor.currentTask = survivor.currentTask.replace('Walking', 'Swimming');
             } else {
-                if (survivor.currentTask.includes('Swimming')) {
-                    survivor.currentTask = survivor.currentTask.replace('Swimming', 'Walking');
-                }
+                if (survivor.currentTask.includes('Swimming')) survivor.currentTask = survivor.currentTask.replace('Swimming', 'Walking');
             }
 
         } else {
             survivor.isMoving = false;
+
+            // Re-orient perfectly towards the object upon arrival
+            if (survivor.targetResource && distanceToTarget > 0.1) {
+                survivor.rotation = Math.atan2(dx, dy);
+            }
+
             if (survivor.targetResource && !survivor.targetResource.isFalling) {
                 const res = survivor.targetResource;
                 let taskSet = false;
@@ -147,7 +157,7 @@ export class AISystem {
                     survivor.stats.hydration = Math.min(100, survivor.stats.hydration + 20 * deltaTime);
                     taskSet = true;
                 } else if (res.type === 'tree') {
-                    if (survivor.equipped.axe === 'stone_axe') {
+                    if (survivor.equipped.axe === 'stone_axe' || window.godMode) {
                         survivor.currentTask = 'Chopping Tree';
                         survivor.isChopping = true;
                         survivor.actionTimer += deltaTime;
@@ -156,9 +166,12 @@ export class AISystem {
                             survivor.actionTimer = 0;
                         }
                         taskSet = true;
-                    } else survivor.currentTask = 'Requires Axe';
+                    } else {
+                        survivor.currentTask = 'Requires Axe';
+                        taskSet = true;
+                    }
                 } else if (res.type === 'rock' || res.type === 'iron_node' || res.type === 'coal_node') {
-                    if (survivor.equipped.pickaxe === 'stone_pickaxe') {
+                    if (survivor.equipped.pickaxe === 'stone_pickaxe' || window.godMode) {
                         survivor.currentTask = 'Mining Node';
                         survivor.isMining = true;
                         survivor.actionTimer += deltaTime;
@@ -168,7 +181,10 @@ export class AISystem {
                             survivor.actionTimer = 0;
                         }
                         taskSet = true;
-                    } else survivor.currentTask = 'Requires Pickaxe';
+                    } else {
+                        survivor.currentTask = 'Requires Pickaxe';
+                        taskSet = true;
+                    }
                 } else if (res.type === 'tall_bush') {
                     survivor.currentTask = 'Gathering Fiber';
                     survivor.isBowing = true;

@@ -1,4 +1,5 @@
 import { ResourceNode } from '../entities/ResourceNode.js';
+import { getElevation } from '../engine/TerrainManager.js';
 
 export class ResourceSystem {
     init(stateManager) {
@@ -6,14 +7,6 @@ export class ResourceSystem {
         stateManager.getState().generatedChunks = new Set();
         stateManager.getState().animals = [];
         this.update(stateManager.getState());
-    }
-
-    getElevation(x, z) {
-        const continent = Math.cos(x * 0.00005) * Math.cos(z * 0.00005) * 1200;
-        const mountains = Math.sin(x * 0.0002 + 123) * Math.cos(z * 0.0002 + 321) * 800;
-        const plains = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 120;
-        const details = Math.sin(x * 0.005) * Math.cos(z * 0.005) * 40;
-        return continent + mountains + plains + details - 880;
     }
 
     update(state) {
@@ -60,15 +53,14 @@ export class ResourceSystem {
                 let x = clampX(offsetX + Math.random() * size);
                 let y = clampY(offsetY + Math.random() * size);
 
-                const elev = this.getElevation(x, y);
+                const elev = getElevation(x, y);
                 if (elev > minElev && elev < maxElev) {
-                    let node = new ResourceNode(type, x, y);
-                    if (type === 'water') node.size = 12;
-                    state.resources.push(node);
+                    state.resources.push(new ResourceNode(type, x, y));
                 }
             }
         };
 
+        // Note: Removed the "Water" nodes completely, as lakes are now carved mathematically out of the terrain logic!
         trySpawn('tree', 15, 6, 250);
         trySpawn('rock', 8, 10, 500);
         trySpawn('iron_node', 5, 300, 800);
@@ -77,12 +69,11 @@ export class ResourceSystem {
         trySpawn('blueberry_bush', 8, 6, 200);
         trySpawn('stick', 20, 2, 250);
         trySpawn('pebble', 20, 2, 500);
-        trySpawn('water', 4, 3, 100);
 
         for (let i = 0; i < 4; i++) {
             let x = clampX(offsetX + Math.random() * size);
             let y = clampY(offsetY + Math.random() * size);
-            if (this.getElevation(x, y) > 6) {
+            if (getElevation(x, y) > 6) {
                 state.animals.push({
                     id: Math.random().toString(),
                     type: Math.random() > 0.5 ? 'deer' : 'bunny',

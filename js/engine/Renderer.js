@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getElevation } from './TerrainManager.js';
 
 export class Renderer {
     constructor(canvasId) {
@@ -73,15 +74,22 @@ export class Renderer {
         this._treeLeavesGeo.translate(0, 2.6, 0);
         this._rockGeo = new THREE.DodecahedronGeometry(1.0);
         this._rockGeo.translate(0, 1.0, 0);
-        this._waterGeo = new THREE.CylinderGeometry(1, 1, 0.1, 16);
-    }
 
-    getElevation(x, z) {
-        const continent = Math.cos(x * 0.00005) * Math.cos(z * 0.00005) * 1200;
-        const mountains = Math.sin(x * 0.0002 + 123) * Math.cos(z * 0.0002 + 321) * 800;
-        const plains = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 120;
-        const details = Math.sin(x * 0.005) * Math.cos(z * 0.005) * 40;
-        return continent + mountains + plains + details - 880;
+        // Reused geometries for Blueberry bush
+        this._bushFoliageGeo = new THREE.SphereGeometry(1, 7, 6);
+        this._bushFoliageMat = new THREE.MeshStandardMaterial({ color: '#3a6e30', roughness: 0.9, flatShading: true });
+        this._bushFoliageBareMat = new THREE.MeshStandardMaterial({ color: '#2a4a20', roughness: 0.9, flatShading: true });
+        this._bushStemGeo = new THREE.CylinderGeometry(0.4, 0.7, 4, 6);
+        this._bushStemMat = new THREE.MeshStandardMaterial({ color: '#4a3728', roughness: 1.0 });
+        this._berryGeo = new THREE.SphereGeometry(0.9, 6, 5);
+        this._berryMat = new THREE.MeshStandardMaterial({ color: '#2c3e9e', roughness: 0.4, metalness: 0.1 });
+        this._berryOffsets = [
+            new THREE.Vector3( 5.5,  7.0,  2.0),
+            new THREE.Vector3(-4.5,  8.0, -3.5),
+            new THREE.Vector3( 1.5, 12.5,  1.5),
+            new THREE.Vector3(-2.5,  4.5,  4.5),
+            new THREE.Vector3( 4.0,  6.0, -4.5),
+        ];
     }
 
     rotateCamera(dx, dy) {
@@ -101,11 +109,52 @@ export class Renderer {
     }
 
     updateGhostMesh(x, z) {
-        if (this.ghostMesh) this.ghostMesh.position.set(x, this.getElevation(x, z) + 5, z);
+        if (this.ghostMesh) this.ghostMesh.position.set(x, getElevation(x, z) + 5, z);
     }
 
     removeGhostMesh() {
         if (this.ghostMesh) { this.scene.remove(this.ghostMesh); this.ghostMesh = null; }
+    }
+
+    _buildBlueberryBush(resource) {
+        const group = new THREE.Group();
+        const stem = new THREE.Mesh(this._bushStemGeo, this._bushStemMat);
+        stem.position.y = 2;
+        stem.castShadow = true;
+        group.add(stem);
+
+        const foliagePositions = [
+            { x:  0,   y: 7,   z:  0,   s: 5.5 },
+            { x:  3,   y: 5.5, z:  1,   s: 4.0 },
+            { x: -3,   y: 5.5, z: -1,   s: 4.0 },
+        ];
+        foliagePositions.forEach(fp => {
+            const f = new THREE.Mesh(this._bushFoliageGeo, this._bushFoliageMat);
+            f.position.set(fp.x, fp.y, fp.z);
+            f.scale.setScalar(fp.s);
+            f.castShadow = true;
+            f.receiveShadow = true;
+            f.userData.isFoliage = true;
+            group.add(f);
+        });
+
+        const berryMeshes = [];
+        this._berryOffsets.forEach((offset, i) => {
+            const berry = new THREE.Mesh(this._berryGeo, this._berryMat);
+            berry.position.copy(offset);
+            berry.castShadow = false;
+            berry.visible = i < resource.berryCount;
+            berry.userData.isBerry = true;
+            berry.userData.berryIndex = i;
+            group.add(berry);
+            berryMeshes.push(berry);
+        });
+
+        group.userData.resource = resource;
+        group.userData.berryMeshes = berryMeshes;
+        group.userData.lastBerryCount = resource.berryCount;
+        group.userData.offset = 0;
+        return group;
     }
 
     render(state) {
@@ -113,7 +162,7 @@ export class Renderer {
         if (state.survivor) {
             px = state.survivor.x;
             pz = state.survivor.y;
-            playerY = this.getElevation(px, pz);
+            playerY = getElevation(px, pz);
         }
 
         const camX = px + this.zoomDist * Math.sin(this.camPolar) * Math.sin(this.camAzimuth);
@@ -133,7 +182,7 @@ export class Renderer {
             for (let i = 0; i < posAttr.count; i++) {
                 const worldX = snapX + posAttr.getX(i);
                 const worldZ = snapZ + posAttr.getZ(i);
-                const elev = this.getElevation(worldX, worldZ);
+                const elev = getElevation(worldX, worldZ);
                 posAttr.setY(i, elev);
 
                 if (elev <= 5) c3.set('#e6d690');
@@ -158,10 +207,10 @@ export class Renderer {
         this.ambientLight.intensity = state.time.ambientLightIntensity;
         this.scene.background = new THREE.Color('#020406').lerp(new THREE.Color('#65a1c9'), state.time.skyTransition);
 
+        // --- SURVIVOR RENDERING & FIXED ONE-HANDED ANIMATIONS ---
         if (state.survivor) {
             if (!this.survivorMesh) {
                 this.survivorMesh = new THREE.Group();
-
                 this.survivorBody = new THREE.Group();
                 this.survivorMesh.add(this.survivorBody);
 
@@ -205,59 +254,66 @@ export class Renderer {
                 this.scene.add(this.survivorMesh);
             }
 
-            const inOcean = playerY < 2;
-            const inWater = inOcean || state.survivor.inLake;
-
-            this.survivorMesh.position.set(px, inWater ? Math.max(playerY - 6, 0) : playerY, pz);
-            if (state.survivor.rotation !== undefined) this.survivorMesh.rotation.y = state.survivor.rotation;
-
-            if (inWater) {
-                this.survivorBody.rotation.x = Math.PI / 2;
-                this.upperBody.rotation.x = 0;
-
-                const swim = Math.sin(Date.now() * 0.005) * 0.5;
-                this.leftArm.rotation.set(0, 0, -Math.PI / 2 + swim);
-                this.rightArm.rotation.set(0, 0, Math.PI / 2 - swim);
-                this.leftLeg.rotation.set(swim, 0, 0);
-                this.rightLeg.rotation.set(-swim, 0, 0);
+            // Hide body entirely if dead message is playing
+            if (state.survivor.deathTimer > 0) {
+                this.survivorMesh.visible = false;
             } else {
-                this.survivorBody.rotation.x = 0;
+                this.survivorMesh.visible = true;
+                const inWater = playerY < 2;
 
-                if (state.survivor.isBowing) {
-                    this.upperBody.rotation.x = Math.PI / 3.5;
-                    this.leftArm.rotation.set(-Math.PI / 8, 0, 0);
-                    this.rightArm.rotation.set(-Math.PI / 8, 0, 0);
-                } else if (state.survivor.isChopping) {
-                    const swing = -Math.PI / 2 + Math.sin(Date.now() * 0.015) * 1.5;
-                    this.upperBody.rotation.x = -Math.PI / 12;
-                    this.leftArm.rotation.set(swing, 0, 0);
-                    this.rightArm.rotation.set(swing, 0, 0);
-                } else if (state.survivor.isMining) {
-                    const swing = -Math.PI / 2 + Math.sin(Date.now() * 0.015) * 1.5;
-                    this.upperBody.rotation.x = -Math.PI / 8;
-                    this.leftArm.rotation.set(swing, 0, 0);
-                    this.rightArm.rotation.set(swing, 0, 0);
+                this.survivorMesh.position.set(px, inWater ? Math.max(playerY - 6, 0) : playerY, pz);
+                if (state.survivor.rotation !== undefined) this.survivorMesh.rotation.y = state.survivor.rotation;
+
+                if (inWater) {
+                    this.survivorBody.rotation.x = Math.PI / 2;
+                    this.upperBody.rotation.x = 0;
+                    const swim = Math.sin(Date.now() * 0.005) * 0.5;
+                    this.leftArm.rotation.set(0, 0, -Math.PI / 2 + swim);
+                    this.rightArm.rotation.set(0, 0, Math.PI / 2 - swim);
+                    this.leftLeg.rotation.set(swim, 0, 0);
+                    this.rightLeg.rotation.set(-swim, 0, 0);
                 } else {
-                    this.upperBody.rotation.x = state.aiming ? 0 : (this.upperBody.rotation.x * 0.8);
+                    this.survivorBody.rotation.x = 0;
 
-                    if (state.aiming) {
-                        this.leftArm.rotation.set(-Math.PI / 2, 0, 0);
-                        this.rightArm.rotation.set(-Math.PI / 2, 0, 0);
-                    } else if (state.survivor.isMoving) {
-                        const walk = Math.sin(Date.now() * 0.015) * 0.8;
-                        this.leftArm.rotation.set(-walk, 0, 0);
-                        this.rightArm.rotation.set(walk, 0, 0);
-                        this.leftLeg.rotation.set(walk, 0, 0);
-                        this.rightLeg.rotation.set(-walk, 0, 0);
+                    if (state.survivor.isBowing) {
+                        this.upperBody.rotation.x = Math.PI / 3.5;
+                        this.leftArm.rotation.set(-Math.PI / 8, 0, 0);
+                        this.rightArm.rotation.set(-Math.PI / 8, 0, 0);
+                    } else if (state.survivor.isChopping) {
+                        const swing = -Math.PI / 2 + Math.sin(Date.now() * 0.015) * 1.5;
+                        this.upperBody.rotation.x = -Math.PI / 12;
+                        // Right Hand ONLY swings!
+                        this.rightArm.rotation.set(swing, 0, 0);
+                        this.leftArm.rotation.set(-Math.PI / 8, 0, 0);
+                    } else if (state.survivor.isMining) {
+                        const swing = -Math.PI / 2 + Math.sin(Date.now() * 0.015) * 1.5;
+                        this.upperBody.rotation.x = -Math.PI / 8;
+                        // Right Hand ONLY swings!
+                        this.rightArm.rotation.set(swing, 0, 0);
+                        this.leftArm.rotation.set(-Math.PI / 8, 0, 0);
                     } else {
-                        this.leftArm.rotation.x *= 0.8; this.rightArm.rotation.x *= 0.8;
-                        this.leftLeg.rotation.x *= 0.8; this.rightLeg.rotation.x *= 0.8;
-                        this.leftArm.rotation.z = 0; this.rightArm.rotation.z = 0;
+                        this.upperBody.rotation.x = state.aiming ? 0 : (this.upperBody.rotation.x * 0.8);
+
+                        if (state.aiming) {
+                            this.leftArm.rotation.set(-Math.PI / 2, 0, 0);
+                            this.rightArm.rotation.set(-Math.PI / 2, 0, 0);
+                        } else if (state.survivor.isMoving) {
+                            const walk = Math.sin(Date.now() * 0.015) * 0.8;
+                            this.leftArm.rotation.set(-walk, 0, 0);
+                            this.rightArm.rotation.set(walk, 0, 0);
+                            this.leftLeg.rotation.set(walk, 0, 0);
+                            this.rightLeg.rotation.set(-walk, 0, 0);
+                        } else {
+                            this.leftArm.rotation.x *= 0.8; this.rightArm.rotation.x *= 0.8;
+                            this.leftLeg.rotation.x *= 0.8; this.rightLeg.rotation.x *= 0.8;
+                            this.leftArm.rotation.z = 0; this.rightArm.rotation.z = 0;
+                        }
                     }
                 }
             }
         }
 
+        // --- ACCURATE BOW AIMING TRAJECTORY ---
         if (state.aiming && state.aimTarget) {
             const points = [];
             let ax = px, ay = playerY + 10, az = pz;
@@ -265,12 +321,12 @@ export class Renderer {
             const dx = state.aimTarget.x - px, dz = state.aimTarget.z - pz;
             const angle = Math.atan2(dz, dx);
             let vx = Math.cos(angle) * power, vy = power * 0.4, vz = Math.sin(angle) * power;
-            const dt = 0.05;
-            for(let i=0; i<40; i++) {
+            const dt = 0.016; // Perfectly matched integration physics
+            for(let i=0; i<150; i++) {
                 points.push(new THREE.Vector3(ax, ay, az));
                 ax += vx * dt; ay += vy * dt; az += vz * dt;
                 vy -= 200 * dt;
-                if (ay < this.getElevation(ax, az)) break;
+                if (ay < getElevation(ax, az)) break;
             }
             if (!this.trajLine) {
                 this.trajLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: 0xff0000 }));
@@ -299,7 +355,7 @@ export class Renderer {
                     this.scene.add(mesh);
                     this.animalMeshes.set(a.id, mesh);
                 }
-                mesh.position.set(a.x, this.getElevation(a.x, a.y) + (a.type==='deer'?4:2), a.y);
+                mesh.position.set(a.x, getElevation(a.x, a.y) + (a.type==='deer'?4:2), a.y);
                 mesh.rotation.y = a.rotation;
             });
         }
@@ -339,11 +395,6 @@ export class Renderer {
                     mesh.castShadow = true; mesh.receiveShadow = true;
                     mesh.scale.setScalar(r.size);
                     mesh.userData = { offset: 0 };
-                } else if (r.type === 'water') {
-                    mesh = new THREE.Mesh(this._waterGeo, new THREE.MeshStandardMaterial({ color: '#2980b9', transparent: true, opacity: 0.65, depthWrite: false }));
-                    mesh.scale.set(r.size, 1, r.size);
-                    mesh.receiveShadow = true;
-                    mesh.userData = { offset: 0.5 };
                 } else if (r.type === 'stick') {
                     mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 8, 6), new THREE.MeshStandardMaterial({ color: r.color }));
                     mesh.rotation.z = Math.PI / 2; mesh.rotation.y = Math.random() * Math.PI;
@@ -359,6 +410,8 @@ export class Renderer {
                     base.position.y = 4; base.castShadow = true;
                     mesh.add(base);
                     mesh.userData = { offset: 0 };
+                } else if (r.type === 'blueberry_bush') {
+                    mesh = this._buildBlueberryBush(r);
                 } else if (r.type === 'crafting_table') {
                     mesh = new THREE.Group();
                     const legs = new THREE.Mesh(new THREE.BoxGeometry(8, 8, 8), new THREE.MeshStandardMaterial({ color: '#5c4033' }));
@@ -381,6 +434,12 @@ export class Renderer {
                     logs.rotation.z = Math.PI / 2; logs.position.y = 1; mesh.add(logs);
                     const fire = new THREE.Mesh(new THREE.ConeGeometry(3, 6), new THREE.MeshBasicMaterial({ color: '#e74c3c' }));
                     fire.position.y = 4; mesh.add(fire);
+
+                    // MASSIVELY increased PointLight intensity to pierce darkness
+                    const light = new THREE.PointLight('#ff7700', 5000, 300);
+                    light.position.y = 15;
+                    mesh.add(light);
+
                     mesh.castShadow = true;
                     mesh.userData = { offset: 0 };
                 } else {
@@ -389,14 +448,26 @@ export class Renderer {
                     mesh.userData = { offset: 1.0 };
                 }
 
-                mesh.position.set(r.x, this.getElevation(r.x, r.y) + mesh.userData.offset, r.y);
+                mesh.position.set(r.x, getElevation(r.x, r.y) + mesh.userData.offset, r.y);
                 this.scene.add(mesh);
                 this.resourceMeshes.set(r.id, mesh);
             } else {
                 const mesh = this.resourceMeshes.get(r.id);
                 if (r.isFalling) {
                     mesh.rotation.x = r.fallAngle;
-                    mesh.position.y = this.getElevation(r.x, r.y) + mesh.userData.offset - (r.fallAngle * 5);
+                    mesh.position.y = getElevation(r.x, r.y) + mesh.userData.offset - (r.fallAngle * 5);
+                } else if (r.type === 'blueberry_bush') {
+                    if (mesh.userData.lastBerryCount !== r.berryCount) {
+                        mesh.userData.lastBerryCount = r.berryCount;
+                        mesh.userData.berryMeshes.forEach((berry, i) => {
+                            berry.visible = i < r.berryCount;
+                        });
+                        mesh.children.forEach(child => {
+                            if (child.userData.isFoliage) {
+                                child.material = r.berryCount === 0 ? this._bushFoliageBareMat : this._bushFoliageMat;
+                            }
+                        });
+                    }
                 }
             }
         });

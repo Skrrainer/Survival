@@ -1,16 +1,21 @@
 import * as THREE from 'three';
 
-// FIX: Mathematical guarantee that (0,0) is land. Cos(0) = 1!
 export function getElevation(x, z) {
-    // Peak continent sits dead center on the spawn
     const continent = Math.cos(x * 0.00005) * Math.cos(z * 0.00005) * 1200;
-    // Offset the mountains so they don't crush the spawn point
     const mountains = Math.sin(x * 0.0002 + 123) * Math.cos(z * 0.0002 + 321) * 800;
     const plains = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 120;
     const details = Math.sin(x * 0.005) * Math.cos(z * 0.005) * 40;
+    let elev = continent + mountains + plains + details - 880;
 
-    // (1200 + (-304) + 0 + 0) - 880 = 16 Elevation at spawn! Perfect Grassland.
-    return continent + mountains + plains + details - 880;
+    // Mathematically carve gorgeous lakes directly into the terrain, forcing them below Sea Level (0)
+    const lakeNoise = Math.sin(x * 0.002) * Math.cos(z * 0.002);
+    if (lakeNoise > 0.8) {
+        const depth = (lakeNoise - 0.8) * 5.0; // Scales from 0.0 to 1.0
+        // Lerp the elevation violently down to -20 to guarantee water and sand shores!
+        elev = elev * (1.0 - depth) - (20.0 * depth);
+    }
+
+    return elev;
 }
 
 export class TerrainManager {
@@ -39,7 +44,7 @@ export class TerrainManager {
         this.ground.userData = { isGround: true };
         this.scene.add(this.ground);
 
-        // --- GLOBAL OCEAN ---
+        // --- GLOBAL OCEAN (Fills both the edges of continents AND the carved lakes) ---
         const seaGeo = new THREE.PlaneGeometry(this.size, this.size);
         seaGeo.rotateX(-Math.PI / 2);
         const seaMat = new THREE.MeshStandardMaterial({
@@ -51,13 +56,12 @@ export class TerrainManager {
             depthWrite: false
         });
         this.sea = new THREE.Mesh(seaGeo, seaMat);
-        this.sea.position.y = 0; // Sea Level
+        this.sea.position.y = 0;
         this.scene.add(this.sea);
 
         this.lastSnapX = null;
         this.lastSnapZ = null;
 
-        // --- ENDLESS WINDY GRASS SHADER ---
         const grassCount = 10000;
         const grassGeo = new THREE.ConeGeometry(1.5, 5, 3);
         const grassMat = new THREE.MeshStandardMaterial({ color: '#448530', flatShading: true, side: THREE.DoubleSide });
@@ -75,7 +79,14 @@ export class TerrainManager {
                     float mountains = sin(x * 0.0002 + 123.0) * cos(z * 0.0002 + 321.0) * 800.0;
                     float plains = sin(x * 0.001) * cos(z * 0.001) * 120.0;
                     float details = sin(x * 0.005) * cos(z * 0.005) * 40.0;
-                    return continent + mountains + plains + details - 880.0;
+                    float elev = continent + mountains + plains + details - 880.0;
+                    
+                    float lakeNoise = sin(x * 0.002) * cos(z * 0.002);
+                    if (lakeNoise > 0.8) {
+                        float depth = (lakeNoise - 0.8) * 5.0;
+                        elev = elev * (1.0 - depth) - (20.0 * depth);
+                    }
+                    return elev;
                 }
 
                 ${shader.vertexShader}

@@ -126,7 +126,7 @@ export class InputSystem {
             if (!state.projectiles) state.projectiles = [];
             state.projectiles.push({
                 x: s.x,
-                y: this.rendererInstance.getElevation(s.x, s.y) + 10,
+                y: this.rendererInstance.getElevation?.(s.x, s.y) || 10,
                 z: s.y,
                 vx: Math.cos(angle) * power,
                 vy: power * 0.4,
@@ -152,7 +152,7 @@ export class InputSystem {
         }
 
         const state = this.stateManager.getState();
-        if (!state.survivor) return;
+        if (!state.survivor || state.survivor.deathTimer > 0) return;
         if (state.survivor.currentTask === 'Sleeping') state.survivor.currentTask = 'Idle';
 
         const intersects = this.raycaster.intersectObjects(this.rendererInstance.scene.children, true);
@@ -170,11 +170,16 @@ export class InputSystem {
         }
 
         if (!hitResource && groundPoint) {
-            let closestDist = 30;
-            state.resources.forEach(res => {
-                const dist = Math.hypot(res.x - groundPoint.x, res.y - groundPoint.z);
-                if (dist < closestDist) { closestDist = dist; hitResource = res; }
-            });
+            // FIX: If the terrain point clicked is below Y=2, treat it as a water interaction!
+            if (groundPoint.y <= 2) {
+                hitResource = { type: 'water', x: groundPoint.x, y: groundPoint.z, size: 5, isFalling: false };
+            } else {
+                let closestDist = 30;
+                state.resources.forEach(res => {
+                    const dist = Math.hypot(res.x - groundPoint.x, res.y - groundPoint.z);
+                    if (dist < closestDist) { closestDist = dist; hitResource = res; }
+                });
+            }
         }
 
         if (hitResource) {
@@ -182,7 +187,6 @@ export class InputSystem {
             state.survivor.targetX = hitResource.x;
             state.survivor.targetY = hitResource.y;
 
-            // FIX: Explicitly setting the task string for every possible resource node!
             const taskNames = {
                 tree: 'Walking to Tree',
                 rock: 'Walking to Rock',

@@ -1,3 +1,5 @@
+import { getElevation } from '../engine/TerrainManager.js';
+
 export class UIManager {
     constructor(stateManager) {
         this.stateManager = stateManager;
@@ -37,6 +39,52 @@ export class UIManager {
         this.ghostPlacementActive = false;
         this.ghostItemType = null;
 
+        // Map Mechanics
+        this.minimapCanvas = document.getElementById('minimap');
+        this.minimapCtx = this.minimapCanvas?.getContext('2d');
+
+        this.fullmapCanvas = document.getElementById('fullmap');
+        this.fullmapCtx = this.fullmapCanvas?.getContext('2d');
+        this.isMapOpen = false;
+        this.mapZoom = 0.5;
+        this.mapPanX = 0;
+        this.mapPanY = 0;
+
+        document.getElementById('minimap-container')?.addEventListener('click', () => {
+            this.isMapOpen = true;
+            document.getElementById('map-modal').style.display = 'block';
+        });
+
+        document.getElementById('close-map')?.addEventListener('click', () => {
+            this.isMapOpen = false;
+            document.getElementById('map-modal').style.display = 'none';
+        });
+
+        document.getElementById('btn-godmode')?.addEventListener('click', (e) => {
+            window.godMode = !window.godMode;
+            e.target.innerText = window.godMode ? "God Mode: ON" : "Enable God Mode";
+            e.target.style.background = window.godMode ? "#e74c3c" : "#9b59b6";
+        });
+
+        this.fullmapCanvas?.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            if (e.deltaY > 0) this.mapZoom = Math.max(0.1, this.mapZoom - 0.05);
+            else this.mapZoom = Math.min(2.0, this.mapZoom + 0.05);
+        });
+
+        let isDraggingMap = false, lastMapX = 0, lastMapY = 0;
+        this.fullmapCanvas?.addEventListener('mousedown', e => { isDraggingMap = true; lastMapX = e.clientX; lastMapY = e.clientY; });
+        this.fullmapCanvas?.addEventListener('mousemove', e => {
+            if (isDraggingMap) {
+                this.mapPanX -= (e.clientX - lastMapX) / this.mapZoom;
+                this.mapPanY -= (e.clientY - lastMapY) / this.mapZoom;
+                lastMapX = e.clientX; lastMapY = e.clientY;
+            }
+        });
+        this.fullmapCanvas?.addEventListener('mouseup', () => isDraggingMap = false);
+        this.fullmapCanvas?.addEventListener('mouseleave', () => isDraggingMap = false);
+
+
         document.addEventListener('keydown', (e) => {
             if (e.key.toLowerCase() === 'i') {
                 this.isInventoryOpen = !this.isInventoryOpen;
@@ -64,24 +112,85 @@ export class UIManager {
         bindBtn('action-cook', () => this.craftItem('cooked_meat', { raw_meat: 1, wood: 1 }));
     }
 
+    drawMap(ctx, width, height, player, resources, zoom, panX, panY) {
+        if (!ctx) return;
+
+        ctx.save();
+        // Base Ocean Color
+        ctx.fillStyle = '#1a5b7d';
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.translate(width / 2, height / 2);
+        ctx.scale(zoom, zoom);
+        ctx.translate(-player.x - panX, -player.y - panY);
+
+        // Dynamically compute the procedural terrain for the map!
+        const startX = player.x + panX - (width/2)/zoom;
+        const endX = player.x + panX + (width/2)/zoom;
+        const startZ = player.y + panY - (height/2)/zoom;
+        const endZ = player.y + panY + (height/2)/zoom;
+
+        const step = Math.max(10, 80 / zoom); // Dynamic resolution for performance
+
+        for(let x = Math.floor(startX/step)*step; x < endX; x+=step) {
+            for(let z = Math.floor(startZ/step)*step; z < endZ; z+=step) {
+                const elev = getElevation(x, z);
+                if (elev > 2) {
+                    if (elev > 400) ctx.fillStyle = '#ffffff';
+                    else if (elev > 250) ctx.fillStyle = '#666666';
+                    else if (elev <= 5) ctx.fillStyle = '#e6d690';
+                    else ctx.fillStyle = '#39602b';
+
+                    ctx.fillRect(x, z, step+1, step+1);
+                }
+            }
+        }
+
+        // Draw Player Built Structures
+        resources.forEach(r => {
+            if (['crafting_table', 'furnace', 'campfire'].includes(r.type)) {
+                ctx.fillStyle = r.color;
+                ctx.fillRect(r.x - 15, r.y - 15, 30, 30);
+            }
+        });
+
+        // Draw Player Arrow
+        ctx.translate(player.x, player.y);
+        ctx.rotate(-player.rotation);
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.moveTo(0, -15);
+        ctx.lineTo(12, 15);
+        ctx.lineTo(-12, 15);
+        ctx.fill();
+
+        ctx.restore();
+    }
+
     craftItem(resultItem, ingredients) {
         const survivor = this.stateManager.getState().survivor;
-        for (let [item, amount] of Object.entries(ingredients)) {
-            if (!survivor.hasEnough(item, amount)) return;
-        }
-        for (let [item, amount] of Object.entries(ingredients)) {
-            survivor.removeItem(item, amount);
+        if (!window.godMode) {
+            for (let [item, amount] of Object.entries(ingredients)) {
+                if (!survivor.hasEnough(item, amount)) return;
+            }
+            for (let [item, amount] of Object.entries(ingredients)) {
+                survivor.removeItem(item, amount);
+            }
         }
         survivor.addItem(resultItem, 1);
     }
 
     craftPlaceable(item, ingredients) {
         const survivor = this.stateManager.getState().survivor;
-        for (let [i, amt] of Object.entries(ingredients)) {
-            if (!survivor.hasEnough(i, amt)) return;
+        if (!window.godMode) {
+            for (let [i, amt] of Object.entries(ingredients)) {
+                if (!survivor.hasEnough(i, amt)) return;
+            }
         }
         if (survivor.addItem(item, 1)) {
-            for (let [i, amt] of Object.entries(ingredients)) survivor.removeItem(i, amt);
+            if (!window.godMode) {
+                for (let [i, amt] of Object.entries(ingredients)) survivor.removeItem(i, amt);
+            }
         }
     }
 
@@ -185,7 +294,6 @@ export class UIManager {
                     div.style.cursor = ''; div.title = '';
                 } else {
                     div.className = 'inv-slot';
-                    // FIX: Added pointer-events: none to text spans so clicks go to the button
                     div.innerHTML = `<span style="pointer-events: none;">${slot.type.replace(/_/g, ' ')}</span><span class="amount" style="pointer-events: none;">${slot.amount}</span>`;
 
                     const placeables = ['crafting_table', 'furnace', 'campfire'];
@@ -221,5 +329,13 @@ export class UIManager {
         const h = state.time.hours.toString().padStart(2, '0');
         const m = state.time.minutes.toString().padStart(2, '0');
         if (this.elements.time && this.elements.time.innerText !== `${h}:${m}`) this.elements.time.innerText = `${h}:${m}`;
+
+        // Update Map UIs
+        this.drawMap(this.minimapCtx, 220, 220, s, state.resources, 0.15, 0, 0);
+        if (this.isMapOpen && this.fullmapCanvas) {
+            this.fullmapCanvas.width = this.fullmapCanvas.clientWidth;
+            this.fullmapCanvas.height = this.fullmapCanvas.clientHeight;
+            this.drawMap(this.fullmapCtx, this.fullmapCanvas.width, this.fullmapCanvas.height, s, state.resources, this.mapZoom, this.mapPanX, this.mapPanY);
+        }
     }
 }
