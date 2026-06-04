@@ -99,6 +99,52 @@ export class Renderer {
             new THREE.Vector3(-2.5,  4.5,  4.5),
             new THREE.Vector3( 4.0,  6.0, -4.5),
         ];
+
+        this.avatarCanvas = document.getElementById('inventory-avatar-canvas');
+        if (this.avatarCanvas) {
+            this.avatarRenderer = new THREE.WebGLRenderer({ canvas: this.avatarCanvas, antialias: true, alpha: true });
+            this.avatarRenderer.setSize(130, 150);
+            this.avatarScene = new THREE.Scene();
+
+            this.avatarCamera = new THREE.PerspectiveCamera(45, 130 / 150, 1, 100);
+            this.avatarCamera.position.set(0, 11, 26);
+            this.avatarCamera.lookAt(0, 10, 0);
+
+            const avLight = new THREE.AmbientLight(0xffffff, 0.6);
+            const avDir = new THREE.DirectionalLight(0xffffff, 0.8);
+            avDir.position.set(5, 15, 10);
+            this.avatarScene.add(avLight, avDir);
+
+            this.avatarModel = new THREE.Group();
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(4, 8, 2.5), new THREE.MeshStandardMaterial({ color: '#3498db' }));
+            torso.position.y = 4;
+
+            this.avBackpack = new THREE.Mesh(new THREE.BoxGeometry(2.5, 4, 1.5), new THREE.MeshStandardMaterial({ color: '#27ae60' }));
+            this.avBackpack.position.set(0, 4, -1.6);
+
+            const visor = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.6, 1.2), new THREE.MeshStandardMaterial({ color: '#222' }));
+            visor.position.set(0, 9.5, 1.4);
+            const head = new THREE.Mesh(new THREE.SphereGeometry(2), new THREE.MeshStandardMaterial({ color: '#f1c27d' }));
+            head.position.y = 9;
+
+            const armGeo = new THREE.CylinderGeometry(0.7, 0.7, 7);
+            armGeo.translate(0, -3.5, 0);
+            this.avLeftArm = new THREE.Mesh(armGeo, new THREE.MeshStandardMaterial({ color: '#f1c27d' }));
+            this.avLeftArm.position.set(-3, 7.5, 0);
+            this.avRightArm = new THREE.Mesh(armGeo, new THREE.MeshStandardMaterial({ color: '#f1c27d' }));
+            this.avRightArm.position.set(3, 7.5, 0);
+
+            const legGeo = new THREE.CylinderGeometry(0.8, 0.8, 5.5);
+            legGeo.translate(0, -2.75, 0);
+            const leftLeg = new THREE.Mesh(legGeo, new THREE.MeshStandardMaterial({ color: '#2c3e50' }));
+            leftLeg.position.set(-1.2, 5, 0);
+            const rightLeg = new THREE.Mesh(legGeo, new THREE.MeshStandardMaterial({ color: '#2c3e50' }));
+            rightLeg.position.set(1.2, 5, 0);
+
+            this.avatarModel.add(torso, this.avBackpack, visor, head, this.avLeftArm, this.avRightArm, leftLeg, rightLeg);
+            this.avatarModel.position.set(0, 3, 0);
+            this.avatarScene.add(this.avatarModel);
+        }
     }
 
     rotateCamera(dx, dy) {
@@ -231,14 +277,13 @@ export class Renderer {
                 torso.castShadow = true;
                 this.upperBody.add(torso);
 
-                // Add distinguishing features so we can easily tell front from back
-                const backpack = new THREE.Mesh(new THREE.BoxGeometry(4, 6, 2.5), new THREE.MeshStandardMaterial({ color: '#27ae60' }));
-                backpack.position.set(0, 6, -2.5); // Back
-                backpack.castShadow = true;
-                this.upperBody.add(backpack);
+                this.backpackMesh = new THREE.Mesh(new THREE.BoxGeometry(4, 6, 2.5), new THREE.MeshStandardMaterial({ color: '#27ae60' }));
+                this.backpackMesh.position.set(0, 6, -2.5);
+                this.backpackMesh.castShadow = true;
+                this.upperBody.add(this.backpackMesh);
 
                 const visor = new THREE.Mesh(new THREE.BoxGeometry(3.5, 1, 2), new THREE.MeshStandardMaterial({ color: '#222' }));
-                visor.position.set(0, 12.5, 2.5); // Front (+Z)
+                visor.position.set(0, 12.5, 2.5);
                 visor.castShadow = true;
                 this.upperBody.add(visor);
 
@@ -280,7 +325,7 @@ export class Renderer {
                 this.toolGroup.add(this.pickaxeVisual);
 
                 this.bowVisual = new THREE.Mesh(new THREE.TorusGeometry(4, 0.3, 8, 20, Math.PI), new THREE.MeshStandardMaterial({color:'#5c4033'}));
-                this.bowVisual.rotation.set(Math.PI/2, 0, 0); // Rotated so it's pointing forward 
+                this.bowVisual.rotation.set(0, Math.PI, 0);
                 this.toolGroup.add(this.bowVisual);
 
                 const legGeo = new THREE.CylinderGeometry(1.2, 1.2, 8);
@@ -311,9 +356,10 @@ export class Renderer {
                     this.survivorMesh.rotation.y = state.survivor.rotation;
                 }
 
-                this.axeVisual.visible = !!state.survivor.isChopping;
-                this.pickaxeVisual.visible = !!state.survivor.isMining;
-                this.bowVisual.visible = !!state.aiming;
+                this.backpackMesh.visible = !!state.survivor.equipped.backpack;
+                this.axeVisual.visible = state.survivor.isChopping;
+                this.pickaxeVisual.visible = state.survivor.isMining;
+                this.bowVisual.visible = state.aiming;
 
                 if (inWater) {
                     this.survivorBody.rotation.x = Math.PI / 2;
@@ -363,7 +409,6 @@ export class Renderer {
         }
 
         if (state.aiming && state.aimTarget) {
-            // Dynamic Charge Calculator
             const holdTime = (Date.now() - (state.aimStartTime || Date.now())) / 1000;
             const chargeRatio = Math.min(1, holdTime / 1.5);
             const power = 50 + ((state.aimMaxPower || 50) - 50) * chargeRatio;
@@ -500,6 +545,18 @@ export class Renderer {
 
                     mesh.castShadow = true;
                     mesh.userData = { offset: 0 };
+                } else if (r.type === 'chest') {
+                    mesh = new THREE.Group();
+                    const base = new THREE.Mesh(new THREE.BoxGeometry(8, 6, 6), new THREE.MeshStandardMaterial({ color: '#8b5a2b', roughness: 0.8 }));
+                    base.position.y = 3;
+                    const lid = new THREE.Mesh(new THREE.BoxGeometry(8.2, 1.5, 6.2), new THREE.MeshStandardMaterial({ color: '#5c4033', roughness: 0.8 }));
+                    lid.position.set(0, 6, 0);
+                    const latch = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2, 0.4), new THREE.MeshStandardMaterial({ color: '#f1c40f', metalness: 0.7, roughness: 0.2 }));
+                    latch.position.set(0, 4.5, 3.1);
+                    mesh.add(base, lid, latch);
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    mesh.userData = { offset: 0 };
                 } else {
                     mesh = new THREE.Mesh(new THREE.BoxGeometry(r.size, r.size, r.size), new THREE.MeshStandardMaterial({ color: r.color || '#fff' }));
                     mesh.position.y = r.size / 2;
@@ -531,5 +588,15 @@ export class Renderer {
         });
 
         this.renderer.render(this.scene, this.camera);
+
+        if (this.avatarCanvas && document.getElementById('inventory-panel').style.display === 'flex') {
+            this.avatarModel.rotation.y += 0.015;
+            this.avLeftArm.rotation.z = Math.sin(Date.now() * 0.003) * 0.08;
+            this.avRightArm.rotation.z = -Math.sin(Date.now() * 0.003) * 0.08;
+
+            this.avBackpack.visible = !!state.survivor.equipped.backpack;
+
+            this.avatarRenderer.render(this.avatarScene, this.avatarCamera);
+        }
     }
 }

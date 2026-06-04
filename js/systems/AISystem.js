@@ -1,6 +1,25 @@
 import { getElevation } from '../engine/Renderer.js';
 
 export class AISystem {
+    findNextResource(currentType, survivor, state) {
+        let closest = null;
+        let minDist = 300;
+        state.resources.forEach(r => {
+            if (r.type === currentType && !r.isFalling && !r.dead) {
+                if (r.type === 'blueberry_bush' && r.berryCount === 0) return;
+                const d = Math.hypot(r.x - survivor.x, r.y - survivor.y);
+                if (d < minDist && d > 0.1) { minDist = d; closest = r; }
+            }
+        });
+        if (closest) {
+            survivor.targetResource = closest;
+            survivor.targetX = closest.x;
+            survivor.targetY = closest.y;
+            return true;
+        }
+        return false;
+    }
+
     update(deltaTime, state) {
         if (!state.survivor) return;
         let survivor = state.survivor;
@@ -119,7 +138,6 @@ export class AISystem {
             survivor.x += (dx / distanceToTarget) * survivor.speed * deltaTime;
             survivor.y += (dy / distanceToTarget) * survivor.speed * deltaTime;
 
-            // Smooth Rotation Interpolation
             const targetRotation = Math.atan2(dx, dy);
             survivor.rotation = survivor.rotation || 0;
             let diff = targetRotation - survivor.rotation;
@@ -198,6 +216,9 @@ export class AISystem {
                         survivor.addItem('fiber', 1);
                         res.isFalling = true;
                         survivor.actionTimer = 0;
+                        if (!this.findNextResource('tall_bush', survivor, state)) {
+                            survivor.targetResource = null;
+                        }
                     }
                     taskSet = true;
                 } else if (['stick', 'pebble', 'raw_meat', 'leather', 'cooked_meat'].includes(res.type)) {
@@ -207,7 +228,9 @@ export class AISystem {
                     if (survivor.actionTimer >= 0.6) {
                         if (survivor.addItem(res.type, 1)) {
                             state.resources = state.resources.filter(r => r.id !== res.id);
-                            survivor.targetResource = null;
+                            if (!this.findNextResource(res.type, survivor, state)) {
+                                survivor.targetResource = null;
+                            }
                         }
                         survivor.actionTimer = 0;
                     }
@@ -220,14 +243,16 @@ export class AISystem {
                         if (survivor.actionTimer >= 0.6) {
                             if (survivor.addItem('blueberry', res.berryCount)) {
                                 res.berryCount = 0;
-                                survivor.targetResource = null;
+                                if (!this.findNextResource('blueberry_bush', survivor, state)) {
+                                    survivor.targetResource = null;
+                                }
                             }
                             survivor.actionTimer = 0;
                         }
                         taskSet = true;
                     } else survivor.currentTask = 'Bush is Empty';
-                } else if (res.type === 'crafting_table' || res.type === 'furnace' || res.type === 'campfire') {
-                    survivor.currentTask = `Using ${res.type}`;
+                } else if (res.type === 'crafting_table' || res.type === 'furnace' || res.type === 'campfire' || res.type === 'chest') {
+                    survivor.currentTask = `Using ${res.type === 'chest' ? 'Storage Chest' : res.type}`;
                     survivor.isBowing = false;
                     survivor.isChopping = false;
                     survivor.isMining = false;
@@ -236,10 +261,13 @@ export class AISystem {
 
                 if (res.health !== undefined && res.health <= 0) {
                     res.isFalling = true;
-                    survivor.targetResource = null;
-                    survivor.currentTask = 'Idle';
-                    survivor.isChopping = false;
-                    survivor.isMining = false;
+                    const lastType = res.type;
+                    if (!this.findNextResource(lastType, survivor, state)) {
+                        survivor.targetResource = null;
+                        survivor.currentTask = 'Idle';
+                        survivor.isChopping = false;
+                        survivor.isMining = false;
+                    }
                 }
 
                 if (!taskSet) {

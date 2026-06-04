@@ -35,7 +35,7 @@ export class InputSystem {
                     this.isAiming = true;
                     this.stateManager.getState().aiming = true;
                     this.stateManager.getState().aimStartTime = Date.now();
-                    this.stateManager.getState().aimMaxPower = 50;
+                    this.stateManager.getState().aimMaxPower = 150;
                     this.updateAim(e);
                 }
             }
@@ -142,7 +142,6 @@ export class InputSystem {
             const dz = target.z - s.y;
             const angle = Math.atan2(dz, dx);
 
-            // Calculate final power based on hold time (1.5s to max charge)
             const holdTime = (Date.now() - state.aimStartTime) / 1000;
             const chargeRatio = Math.min(1, holdTime / 1.5);
             const power = 50 + (state.aimMaxPower - 50) * chargeRatio;
@@ -223,6 +222,7 @@ export class InputSystem {
                 crafting_table: 'Walking to Workbench',
                 furnace: 'Walking to Furnace',
                 campfire: 'Walking to Campfire',
+                chest: 'Walking to Storage Chest',
                 raw_meat: 'Walking to Loot',
                 leather: 'Walking to Loot',
                 cooked_meat: 'Walking to Loot'

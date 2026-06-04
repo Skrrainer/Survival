@@ -7,11 +7,10 @@ export function getElevation(x, z) {
     const details = Math.sin(x * 0.005) * Math.cos(z * 0.005) * 40;
     let elev = continent + mountains + plains + details - 880;
 
-    // FIX: Inland Lake Logic Rebuilt. Creates shallow, smooth basins on land instead of bottomless craters!
     const lakeNoise = Math.sin(x * 0.002) * Math.cos(z * 0.002);
     if (lakeNoise > 0.8) {
-        const depth = (lakeNoise - 0.8) * 5.0; // Scales 0 to 1
-        elev -= depth * 35; // Drops the terrain a maximum of 35 units to create a natural valley basin
+        const depth = (lakeNoise - 0.8) * 5.0;
+        elev -= depth * 35;
     }
 
     return elev;
@@ -43,7 +42,6 @@ export class TerrainManager {
         this.ground.userData = { isGround: true };
         this.scene.add(this.ground);
 
-        // --- GLOBAL OCEAN ---
         const seaGeo = new THREE.PlaneGeometry(this.size, this.size);
         seaGeo.rotateX(-Math.PI / 2);
         const seaMat = new THREE.MeshStandardMaterial({
@@ -159,11 +157,10 @@ export class TerrainManager {
                 const elev = getElevation(worldX, worldZ);
                 posAttr.setY(i, elev);
 
-                // Check lake basin for Sand Coloring
                 const lakeNoise = Math.sin(worldX * 0.002) * Math.cos(worldZ * 0.002);
 
                 if (elev <= 5 || lakeNoise > 0.8) {
-                    c3.set('#e6d690'); // Sand for beaches AND lake basins
+                    c3.set('#e6d690');
                 } else if (elev < 30) {
                     const t = (elev - 5) / 25;
                     c3.set('#e6d690').lerp(new THREE.Color('#39602b'), t);
