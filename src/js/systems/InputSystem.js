@@ -29,6 +29,7 @@ export class InputSystem {
                 const s = this.stateManager.getState().survivor;
                 if (s && s.equipped.weapon === 'bow') {
                     s.targetResource = null;
+                    s.targetEnemy = null;
                     s.targetX = s.x;
                     s.targetY = s.y;
                     s.currentTask = 'Aiming';
@@ -178,33 +179,66 @@ export class InputSystem {
         if (!state.survivor || state.survivor.deathTimer > 0) return;
         if (state.survivor.currentTask === 'Sleeping') state.survivor.currentTask = 'Idle';
 
+        state.survivor.targetResource = null;
+        state.survivor.targetEnemy = null;
+
         const intersects = this.raycaster.intersectObjects(this.rendererInstance.scene.children, true);
-        let hitResource = null, groundPoint = null;
+        let hitResource = null, groundPoint = null, hitEnemy = null;
 
         for (let i = 0; i < intersects.length; i++) {
             let obj = intersects[i].object;
-            while (obj && !obj.userData.resource && !obj.userData.isGround) obj = obj.parent;
+            while (obj && !obj.userData.resource && !obj.userData.isGround && !obj.userData.enemy) obj = obj.parent;
+
             if (obj && obj.userData.resource) {
                 hitResource = obj.userData.resource;
+                break;
+            } else if (obj && obj.userData.enemy) {
+                hitEnemy = obj.userData.enemy;
                 break;
             } else if (obj && obj.userData.isGround && !groundPoint) {
                 groundPoint = intersects[i].point;
             }
         }
 
-        if (!hitResource && groundPoint) {
+        // Aim Assist logic for enemies, animals, and resources
+        if (!hitResource && !hitEnemy && groundPoint) {
             if (groundPoint.y <= 2) {
                 hitResource = { type: 'water', x: groundPoint.x, y: groundPoint.z, size: 5, isFalling: false };
             } else {
                 let closestDist = 30;
-                state.resources.forEach(res => {
-                    const dist = Math.hypot(res.x - groundPoint.x, res.y - groundPoint.z);
-                    if (dist < closestDist) { closestDist = dist; hitResource = res; }
-                });
+
+                // Priority 1: Check Enemies
+                if (state.enemies) {
+                    state.enemies.forEach(e => {
+                        const dist = Math.hypot(e.x - groundPoint.x, e.y - groundPoint.z);
+                        if (dist < closestDist) { closestDist = dist; hitEnemy = e; }
+                    });
+                }
+
+                // Priority 2: Check Animals
+                if (!hitEnemy && state.animals) {
+                    state.animals.forEach(a => {
+                        const dist = Math.hypot(a.x - groundPoint.x, a.y - groundPoint.z);
+                        if (dist < closestDist) { closestDist = dist; hitEnemy = a; }
+                    });
+                }
+
+                // Priority 3: Check Resources
+                if (!hitEnemy) {
+                    state.resources.forEach(res => {
+                        const dist = Math.hypot(res.x - groundPoint.x, res.y - groundPoint.z);
+                        if (dist < closestDist) { closestDist = dist; hitResource = res; }
+                    });
+                }
             }
         }
 
-        if (hitResource) {
+        if (hitEnemy) {
+            state.survivor.targetEnemy = hitEnemy;
+            state.survivor.targetX = hitEnemy.x;
+            state.survivor.targetY = hitEnemy.y;
+            state.survivor.currentTask = 'Engaging Enemy';
+        } else if (hitResource) {
             state.survivor.targetResource = hitResource;
             state.survivor.targetX = hitResource.x;
             state.survivor.targetY = hitResource.y;
@@ -231,7 +265,6 @@ export class InputSystem {
             state.survivor.currentTask = taskNames[hitResource.type] ?? 'Walking';
 
         } else if (groundPoint) {
-            state.survivor.targetResource = null;
             state.survivor.targetX = groundPoint.x;
             state.survivor.targetY = groundPoint.z;
             state.survivor.currentTask = 'Walking';

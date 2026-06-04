@@ -2,7 +2,12 @@ import * as THREE from 'three';
 
 export function getElevation(x, z) {
     const continent = Math.cos(x * 0.00005) * Math.cos(z * 0.00005) * 1200;
-    const mountains = Math.sin(x * 0.0002 + 123) * Math.cos(z * 0.0002 + 321) * 800;
+
+    // Isolate the mountain wave and force it to be steep/sharp
+    let m = Math.sin(x * 0.0002 + 123) * Math.cos(z * 0.0002 + 321);
+    m = Math.max(0, m); // Only positive peaks
+    const mountains = m * m * 3500; // Sharper and massively scaled up
+
     const plains = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 120;
     const details = Math.sin(x * 0.005) * Math.cos(z * 0.005) * 40;
     let elev = continent + mountains + plains + details - 880;
@@ -73,7 +78,11 @@ export class TerrainManager {
 
                 float getShaderElevation(float x, float z) {
                     float continent = cos(x * 0.00005) * cos(z * 0.00005) * 1200.0;
-                    float mountains = sin(x * 0.0002 + 123.0) * cos(z * 0.0002 + 321.0) * 800.0;
+                    
+                    float m = sin(x * 0.0002 + 123.0) * cos(z * 0.0002 + 321.0);
+                    m = max(0.0, m);
+                    float mountains = m * m * 3500.0;
+                    
                     float plains = sin(x * 0.001) * cos(z * 0.001) * 120.0;
                     float details = sin(x * 0.005) * cos(z * 0.005) * 40.0;
                     float elev = continent + mountains + plains + details - 880.0;
@@ -164,12 +173,12 @@ export class TerrainManager {
                 } else if (elev < 30) {
                     const t = (elev - 5) / 25;
                     c3.set('#e6d690').lerp(new THREE.Color('#39602b'), t);
-                } else if (elev > 800) {
-                    const t = Math.min(1, (elev - 800) / 200);
-                    c3.set('#666666').lerp(new THREE.Color('#ffffff'), t);
-                } else if (elev > 400) {
-                    const t = Math.min(1, (elev - 400) / 400);
-                    c3.set('#39602b').lerp(new THREE.Color('#666666'), t);
+                } else if (elev > 1800) {
+                    const t = Math.min(1, (elev - 1800) / 500);
+                    c3.set('#444444').lerp(new THREE.Color('#ffffff'), t); // High Rock into Snow Caps
+                } else if (elev > 600) {
+                    const t = Math.min(1, (elev - 600) / 1200);
+                    c3.set('#39602b').lerp(new THREE.Color('#444444'), t); // Grass transitioning to Rock
                 } else {
                     c3.set('#39602b');
                 }

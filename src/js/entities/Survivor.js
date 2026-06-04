@@ -7,6 +7,11 @@ export class Survivor {
         this.speed = 40;
         this.rotation = 0;
 
+        // Leveling System
+        this.level = 1;
+        this.xp = 0;
+        this.xpToNextLevel = 100;
+
         this.inventory = new Array(10).fill(null);
 
         this.equipped = {
@@ -18,6 +23,21 @@ export class Survivor {
         this.currentTask = 'Idle';
         this.targetResource = null;
         this.deathTimer = 0;
+    }
+
+    addXP(amount) {
+        this.xp += amount;
+        while (this.xp >= this.xpToNextLevel) {
+            this.xp -= this.xpToNextLevel;
+            this.level++;
+            this.xpToNextLevel = Math.floor(this.xpToNextLevel * 1.5);
+
+            // Level Up Rewards
+            this.stats.health = 100;
+            this.stats.hydration = 100;
+            this.stats.satiety = 100;
+            this.currentTask = 'Leveled Up!';
+        }
     }
 
     addItem(type, amount) {

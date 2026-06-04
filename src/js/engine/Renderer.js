@@ -74,6 +74,7 @@ export class Renderer {
 
         this.resourceMeshes = new Map();
         this.animalMeshes = new Map();
+        this.enemyMeshes = new Map();
         this.projectileMeshes = [];
         this.ghostMesh = null;
 
@@ -178,6 +179,9 @@ export class Renderer {
         this.ambientLight.intensity = state.time.ambientLightIntensity;
         this.scene.background = new THREE.Color('#020406').lerp(new THREE.Color('#65a1c9'), state.time.skyTransition);
 
+        // Reset rotations
+        this.survivorNodes.upperBody.rotation.y = 0;
+
         if (state.survivor) {
             if (state.survivor.deathTimer > 0) {
                 this.survivorMesh.visible = false;
@@ -197,6 +201,7 @@ export class Renderer {
                 this.survivorNodes.axeVisual.visible = !!state.survivor.isChopping;
                 this.survivorNodes.pickaxeVisual.visible = !!state.survivor.isMining;
                 this.survivorNodes.bowVisual.visible = !!state.aiming;
+                this.survivorNodes.swordVisual.visible = !!state.survivor.isAttacking;
 
                 if (inWater) {
                     this.survivorNodes.body.rotation.x = Math.PI / 2;
@@ -213,6 +218,16 @@ export class Renderer {
                         this.survivorNodes.upperBody.rotation.x = Math.PI / 3.5;
                         this.survivorNodes.leftArm.rotation.set(-Math.PI / 8, 0, 0);
                         this.survivorNodes.rightArm.rotation.set(-Math.PI / 8, 0, 0);
+                    } else if (state.survivor.isAttacking) {
+                        const p = (0.4 - state.survivor.attackTimer) / 0.4;
+                        const swingY = Math.sin(p * Math.PI) * 0.8;
+                        const armX = -Math.PI / 2 + Math.cos(p * Math.PI) * 2.0;
+                        const armZ = Math.sin(p * Math.PI) * 1.2;
+
+                        this.survivorNodes.upperBody.rotation.y = -swingY;
+                        this.survivorNodes.upperBody.rotation.x = -Math.PI / 12;
+                        this.survivorNodes.rightArm.rotation.set(armX, 0, armZ);
+                        this.survivorNodes.leftArm.rotation.set(-Math.PI / 8, 0, 0);
                     } else if (state.survivor.isChopping) {
                         const swing = -Math.PI / 2 + Math.sin(Date.now() * 0.015) * 1.5;
                         this.survivorNodes.upperBody.rotation.x = -Math.PI / 12;
@@ -276,23 +291,66 @@ export class Renderer {
         }
 
         const activeAnimals = new Set(state.animals?.map(a => a.id));
-        for (let [id, mesh] of this.animalMeshes.entries()) {
-            if (!activeAnimals.has(id)) { this.scene.remove(mesh); this.animalMeshes.delete(id); }
+        for (let [id, meshObj] of this.animalMeshes.entries()) {
+            if (!activeAnimals.has(id)) {
+                this.scene.remove(meshObj.group);
+                this.animalMeshes.delete(id);
+            }
         }
         if (state.animals) {
             state.animals.forEach(a => {
-                let mesh = this.animalMeshes.get(a.id);
-                if (!mesh) {
-                    mesh = new THREE.Mesh(
-                        new THREE.BoxGeometry(a.type === 'deer' ? 8 : 4, a.type === 'deer' ? 8 : 4, a.type === 'deer' ? 12 : 4),
-                        new THREE.MeshStandardMaterial({ color: a.type === 'deer' ? '#8B4513' : '#ecf0f1' })
-                    );
-                    mesh.castShadow = true;
-                    this.scene.add(mesh);
-                    this.animalMeshes.set(a.id, mesh);
+                let meshObj = this.animalMeshes.get(a.id);
+                if (!meshObj) {
+                    meshObj = a.type === 'deer' ? this.meshBuilder.buildDeerMesh() : this.meshBuilder.buildBunnyMesh();
+                    meshObj.group.castShadow = true;
+                    this.scene.add(meshObj.group);
+                    this.animalMeshes.set(a.id, meshObj);
                 }
-                mesh.position.set(a.x, getElevation(a.x, a.y) + (a.type==='deer'?4:2), a.y);
-                mesh.rotation.y = a.rotation;
+
+                const group = meshObj.group;
+                group.position.set(a.x, getElevation(a.x, a.y), a.y);
+                group.rotation.y = a.rotation;
+
+                if (a.isMoving) {
+                    if (a.type === 'deer') {
+                        const walk = Math.sin(Date.now() * 0.01) * 0.5;
+                        meshObj.flLeg.rotation.x = walk;
+                        meshObj.brLeg.rotation.x = walk;
+                        meshObj.frLeg.rotation.x = -walk;
+                        meshObj.blLeg.rotation.x = -walk;
+                    } else if (a.type === 'bunny') {
+                        const hop = Math.abs(Math.sin(Date.now() * 0.015)) * 1.5;
+                        group.position.y += hop;
+                        meshObj.body.rotation.x = -Math.sin(Date.now() * 0.015) * 0.2;
+                    }
+                } else {
+                    if (a.type === 'deer') {
+                        meshObj.flLeg.rotation.x = 0; meshObj.brLeg.rotation.x = 0;
+                        meshObj.frLeg.rotation.x = 0; meshObj.blLeg.rotation.x = 0;
+                    } else if (a.type === 'bunny') {
+                        meshObj.body.rotation.x = 0;
+                    }
+                }
+            });
+        }
+
+        const activeEnemies = new Set(state.enemies?.map(e => e.id));
+        for (let [id, mesh] of this.enemyMeshes.entries()) {
+            if (!activeEnemies.has(id)) { this.scene.remove(mesh); this.enemyMeshes.delete(id); }
+        }
+        if (state.enemies) {
+            state.enemies.forEach(e => {
+                let mesh = this.enemyMeshes.get(e.id);
+                if (!mesh) {
+                    mesh = this.meshBuilder.buildSlimeMesh(e);
+                    this.scene.add(mesh);
+                    this.enemyMeshes.set(e.id, mesh);
+                }
+                mesh.position.set(e.x, getElevation(e.x, e.y) + (e.zOffset || 0), e.y);
+                mesh.rotation.y = e.rotation || 0;
+                if (e.scaleY) {
+                    mesh.scale.set(1, e.scaleY, 1);
+                }
             });
         }
 
@@ -352,7 +410,6 @@ export class Renderer {
                     mesh.add(base);
                     mesh.userData = { offset: 0 };
                 } else if (r.type === 'blueberry_bush') {
-                    // FIX: Re-added the missing call to the meshBuilder!
                     mesh = this.meshBuilder.buildBlueberryBush(r);
                 } else if (r.type === 'crafting_table') {
                     mesh = new THREE.Group();

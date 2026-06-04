@@ -130,7 +130,7 @@ export class UIManager {
 
                         let existsInChests = false;
                         for (let c of nearbyChests) {
-                            for (let j = 0; j < 8; j++) {
+                            for (let j = 0; j < 10; j++) {
                                 if (c.slots[j] && c.slots[j].type === pSlot.type) {
                                     existsInChests = true; break;
                                 }
@@ -141,7 +141,7 @@ export class UIManager {
                         if (existsInChests) {
                             let deposited = false;
                             for (let c of nearbyChests) {
-                                for (let j = 0; j < 8; j++) {
+                                for (let j = 0; j < 10; j++) {
                                     if (c.slots[j] && c.slots[j].type === pSlot.type) {
                                         c.slots[j].amount += pSlot.amount;
                                         deposited = true; break;
@@ -151,7 +151,7 @@ export class UIManager {
                             }
                             if (!deposited) {
                                 for (let c of nearbyChests) {
-                                    for (let j = 0; j < 8; j++) {
+                                    for (let j = 0; j < 10; j++) {
                                         if (!c.slots[j]) {
                                             c.slots[j] = { type: pSlot.type, amount: pSlot.amount };
                                             deposited = true; break;
@@ -266,7 +266,7 @@ export class UIManager {
         let chests = [];
         state.resources.forEach(r => {
             if (r.type === 'chest' && Math.hypot(r.x - s.x, r.y - s.y) < 120) {
-                if (!r.slots) r.slots = Array(8).fill(null);
+                if (!r.slots) r.slots = Array(10).fill(null);
                 chests.push(r);
             }
         });
@@ -280,14 +280,14 @@ export class UIManager {
         if (!item) return;
 
         let deposited = false;
-        for (let j = 0; j < 8; j++) {
+        for (let j = 0; j < 10; j++) {
             if (chest.slots[j] && chest.slots[j].type === item.type) {
                 chest.slots[j].amount += item.amount;
                 deposited = true; break;
             }
         }
         if (!deposited) {
-            for (let j = 0; j < 8; j++) {
+            for (let j = 0; j < 10; j++) {
                 if (!chest.slots[j]) {
                     chest.slots[j] = { ...item };
                     deposited = true; break;
@@ -311,9 +311,9 @@ export class UIManager {
     getItemIcon(type) {
         const def = Registry[type];
         if (def && def.icon) {
-            return `<img src="src/assets/imgs/itemsIcons/${def.icon}" style="width: 100%; height: 100%; object-fit: contain; pointer-events: none;" alt="${def.name}">`;
+            return `<img src="src/assets/imgs/itemsIcons/${def.icon}" onerror="this.outerHTML='<span style=&quot;font-size: 1.5rem; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;&quot;>📦</span>'" style="width: 100%; height: 100%; object-fit: contain; pointer-events: none;" alt="${def.name}">`;
         }
-        return `<span style="font-size: 1.5rem;">📦</span>`;
+        return `<span style="font-size: 1.5rem; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">📦</span>`;
     }
 
     getIngredientCount(s, state, itemType) {
@@ -351,7 +351,7 @@ export class UIManager {
     drawMap(ctx, width, height, player, resources, zoom, panX, panY) {
         if (!ctx) return;
         ctx.save();
-        ctx.fillStyle = '#111';
+        ctx.fillStyle = '#1a5b7d';
         ctx.fillRect(0, 0, width, height);
         ctx.translate(width / 2, height / 2);
         ctx.scale(zoom, zoom);
@@ -360,15 +360,15 @@ export class UIManager {
         const startX = player.x + panX - (width/2)/zoom;
         const endX = player.x + panX + (width/2)/zoom;
         const startZ = player.y + panY - (height/2)/zoom;
-        const endZ = player.y + panY - (height/2)/zoom;
+        const endZ = player.y + panY + (height/2)/zoom;
         const step = Math.max(3, 15 / zoom);
 
         for(let x = Math.floor(startX/step)*step; x < endX; x+=step) {
             for(let z = Math.floor(startZ/step)*step; z < endZ; z+=step) {
                 const elev = getElevation(x, z);
                 if (elev > 2) {
-                    if (elev > 400) ctx.fillStyle = '#444';
-                    else if (elev > 250) ctx.fillStyle = '#333';
+                    if (elev > 1800) ctx.fillStyle = '#eee';
+                    else if (elev > 600) ctx.fillStyle = '#444';
                     else if (elev <= 5) ctx.fillStyle = '#887';
                     else ctx.fillStyle = '#232';
                     ctx.fillRect(x, z, step+1, step+1);
@@ -378,7 +378,7 @@ export class UIManager {
 
         resources.forEach(r => {
             if (['crafting_table', 'furnace', 'campfire', 'chest', 'blacksmith'].includes(r.type)) {
-                ctx.fillStyle = r.color;
+                ctx.fillStyle = r.color || '#8b5a2b';
                 ctx.fillRect(r.x - 15, r.y - 15, 30, 30);
             }
         });
@@ -433,9 +433,55 @@ export class UIManager {
         document.dispatchEvent(new CustomEvent('ghostPlacementStarted', { detail: { itemType } }));
     }
 
+    confirmGhostPlacement(x, z) {
+        if (!this.ghostPlacementActive || !this.ghostItemType) return;
+
+        const state = this.stateManager.getState();
+        const s = state.survivor;
+
+        if (s.removeItem(this.ghostItemType, 1)) {
+            state.resources.push({
+                id: Math.random().toString(),
+                type: this.ghostItemType,
+                x: x,
+                y: z,
+                size: 8,
+                health: 100,
+                color: '#8b5a2b'
+            });
+        }
+
+        this.cancelGhostPlacement();
+    }
+
+    cancelGhostPlacement() {
+        this.ghostPlacementActive = false;
+        this.ghostItemType = null;
+        document.dispatchEvent(new CustomEvent('ghostPlacementCancelled'));
+    }
+
     update(state) {
         if (!state.survivor) return;
         const s = state.survivor;
+
+        // Dynamic Injection of Level / XP tracker UI
+        if (!this.elements.levelText) {
+            this.elements.levelText = document.createElement('div');
+            this.elements.levelText.id = 'player-level-ui';
+            this.elements.levelText.style.position = 'absolute';
+            this.elements.levelText.style.top = '20px';
+            this.elements.levelText.style.left = '50%';
+            this.elements.levelText.style.transform = 'translateX(-50%)';
+            this.elements.levelText.style.color = '#f1c40f';
+            this.elements.levelText.style.fontFamily = 'monospace';
+            this.elements.levelText.style.fontWeight = 'bold';
+            this.elements.levelText.style.fontSize = '24px';
+            this.elements.levelText.style.textShadow = '2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000';
+            this.elements.levelText.style.pointerEvents = 'none';
+            this.elements.levelText.style.zIndex = '1000';
+            document.body.appendChild(this.elements.levelText);
+        }
+        this.elements.levelText.innerText = `Level ${s.level} [XP: ${s.xp}/${s.xpToNextLevel}]`;
 
         if (s.equipped.backpack === undefined) s.equipped.backpack = null;
 
@@ -467,7 +513,7 @@ export class UIManager {
 
         if (s.currentTask === 'Using Storage Chest' && s.targetResource?.type === 'chest') {
             openChest = s.targetResource;
-            if (!openChest.slots) openChest.slots = Array(8).fill(null);
+            if (!openChest.slots) openChest.slots = Array(10).fill(null);
         }
 
         state.resources.forEach(r => {
@@ -544,7 +590,7 @@ export class UIManager {
         });
 
         if (openChest && this.elements.chestGrid) {
-            if (this.chestSlotElements.length !== 8) {
+            if (this.chestSlotElements.length !== 10) {
                 this.elements.chestGrid.innerHTML = '';
                 this.chestSlotElements = [];
                 openChest.slots.forEach((_, index) => {

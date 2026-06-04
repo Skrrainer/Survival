@@ -73,6 +73,7 @@ export class AISystem {
             }
         });
 
+        // Projectile collisions
         if (!state.projectiles) state.projectiles = [];
         state.projectiles.forEach(p => {
             p.x += p.vx * deltaTime;
@@ -81,17 +82,21 @@ export class AISystem {
             p.vy -= 200 * deltaTime;
             p.life -= deltaTime;
 
-            if (state.animals) {
-                state.animals.forEach(a => {
-                    if (!a.dead && Math.hypot(a.x - p.x, a.y - p.z) < 15) {
-                        a.hp -= 20;
+            const checkHit = (targets) => {
+                if (!targets) return;
+                targets.forEach(t => {
+                    if (!t.dead && Math.hypot(t.x - p.x, t.y - p.z) < 15) {
+                        t.hp -= 20;
                         p.life = 0;
                     }
                 });
-            }
+            };
+            checkHit(state.animals);
+            checkHit(state.enemies);
         });
         state.projectiles = state.projectiles.filter(p => p.life > 0 && p.y > -10);
 
+        // Animal Logic
         if (!state.animals) state.animals = [];
         state.animals.forEach(a => {
             if (a.hp <= 0) {
@@ -100,6 +105,7 @@ export class AISystem {
                 if (a.type === 'deer') {
                     state.resources.push({ id: Math.random().toString(), type: 'leather', x: a.x + 5, y: a.y + 5, size: 5 });
                 }
+                survivor.addXP(25); // Grant XP
                 return;
             }
 
@@ -109,6 +115,7 @@ export class AISystem {
                 a.x += Math.cos(angle) * a.speed * 2 * deltaTime;
                 a.y += Math.sin(angle) * a.speed * 2 * deltaTime;
                 a.rotation = Math.atan2(Math.cos(angle), Math.sin(angle));
+                a.isMoving = true;
             } else {
                 a.timer -= deltaTime;
                 if (a.timer <= 0) {
@@ -125,6 +132,75 @@ export class AISystem {
         });
         state.animals = state.animals.filter(a => !a.dead);
 
+        // Enemy (Slime) Logic
+        if (!state.enemies) state.enemies = [];
+        state.enemies.forEach(e => {
+            if (e.hp <= 0) {
+                e.dead = true;
+                state.resources.push({ id: Math.random().toString(), type: 'raw_meat', x: e.x, y: e.y, size: 5 });
+                survivor.addXP(50); // Grant XP
+                return;
+            }
+
+            e.jumpTimer = (e.jumpTimer || 0) + deltaTime;
+            if (e.jumpTimer > 2.0) {
+                e.jumpTimer = 0;
+                e.isJumping = true;
+                e.jumpProgress = 0;
+
+                const distToPlayer = Math.hypot(survivor.x - e.x, survivor.y - e.y);
+                if (distToPlayer < 120) {
+                    e.targetAngle = Math.atan2(survivor.y - e.y, survivor.x - e.x);
+                } else {
+                    e.targetAngle = Math.random() * Math.PI * 2;
+                }
+            }
+
+            if (e.isJumping) {
+                e.jumpProgress += deltaTime * 2.5;
+                if (e.jumpProgress >= 1) {
+                    e.isJumping = false;
+                    e.zOffset = 0;
+                    e.scaleY = 1;
+                } else {
+                    e.zOffset = Math.sin(e.jumpProgress * Math.PI) * 8;
+                    e.x += Math.cos(e.targetAngle) * 45 * deltaTime;
+                    e.y += Math.sin(e.targetAngle) * 45 * deltaTime;
+                    e.rotation = e.targetAngle;
+
+                    if (e.jumpProgress < 0.2) e.scaleY = 0.7;
+                    else if (e.jumpProgress < 0.8) e.scaleY = 1.3;
+                    else e.scaleY = 0.8;
+                }
+            }
+
+            // Continuous Touch Damage
+            if (!window.godMode && Math.hypot(survivor.x - e.x, survivor.y - e.y) < 18) {
+                e.attackCooldown = (e.attackCooldown || 0) - deltaTime;
+                if (e.attackCooldown <= 0) {
+                    survivor.stats.health -= 15;
+                    e.attackCooldown = 1.5; // Cooldown between hits
+                }
+            } else {
+                e.attackCooldown = 0; // Immediate hit upon entering range
+            }
+        });
+        state.enemies = state.enemies.filter(e => !e.dead);
+
+        if (survivor.isAttacking) {
+            survivor.attackTimer = (survivor.attackTimer || 0) - deltaTime;
+            if (survivor.attackTimer <= 0) {
+                survivor.isAttacking = false;
+                survivor.currentTask = 'Idle';
+            }
+        }
+
+        // Active Target Tracking
+        if (survivor.targetEnemy && !survivor.targetEnemy.dead) {
+            survivor.targetX = survivor.targetEnemy.x;
+            survivor.targetY = survivor.targetEnemy.y;
+        }
+
         const dx = survivor.targetX - survivor.x;
         const dy = survivor.targetY - survivor.y;
         const distanceToTarget = Math.sqrt(dx * dx + dy * dy);
@@ -133,6 +209,8 @@ export class AISystem {
         if (survivor.targetResource) {
             if (survivor.targetResource.type === 'water') stopDistance = 15;
             else stopDistance = survivor.targetResource.size + 4;
+        } else if (survivor.targetEnemy) {
+            stopDistance = 22; // Increased melee range
         }
 
         if (distanceToTarget > stopDistance) {
@@ -162,7 +240,7 @@ export class AISystem {
         } else {
             survivor.isMoving = false;
 
-            if (survivor.targetResource && distanceToTarget > 0.1) {
+            if ((survivor.targetResource || survivor.targetEnemy) && distanceToTarget > 0.1) {
                 const targetRotation = Math.atan2(dx, dy);
                 survivor.rotation = survivor.rotation || 0;
                 let diff = targetRotation - survivor.rotation;
@@ -171,7 +249,26 @@ export class AISystem {
                 survivor.rotation += diff * 15 * deltaTime;
             }
 
-            if (survivor.targetResource && !survivor.targetResource.isFalling) {
+            if (survivor.targetEnemy) {
+                const e = survivor.targetEnemy;
+                if (e.dead) {
+                    survivor.targetEnemy = null;
+                    survivor.currentTask = 'Idle';
+                } else if (!survivor.isAttacking) {
+                    if (survivor.equipped.weapon) {
+                        const weaponDef = Registry[survivor.equipped.weapon];
+                        survivor.isAttacking = true;
+                        survivor.attackTimer = 0.4;
+                        survivor.currentTask = 'Attacking!';
+                        e.hp -= weaponDef ? (weaponDef.damage || 10) : 10;
+                        e.x += Math.cos(survivor.rotation) * 8;
+                        e.y += Math.sin(survivor.rotation) * 8;
+                    } else {
+                        survivor.currentTask = 'Need Weapon!';
+                    }
+                }
+            }
+            else if (survivor.targetResource && !survivor.targetResource.isFalling) {
                 const res = survivor.targetResource;
                 let taskSet = false;
 
@@ -187,7 +284,10 @@ export class AISystem {
                         survivor.isChopping = true;
                         survivor.actionTimer += deltaTime * (toolDef ? toolDef.tier : 1);
                         if (survivor.actionTimer > 1) {
-                            if (survivor.addItem('wood', 1)) res.health -= 1;
+                            if (survivor.addItem('wood', 1)) {
+                                res.health -= 1;
+                                survivor.addXP(10);
+                            }
                             survivor.actionTimer = 0;
                         }
                         taskSet = true;
@@ -203,7 +303,10 @@ export class AISystem {
                         survivor.actionTimer += deltaTime * (toolDef ? toolDef.tier : 1);
                         if (survivor.actionTimer > 1) {
                             const dropMap = { rock: 'stone', iron_node: 'iron_ore', coal_node: 'coal' };
-                            if (survivor.addItem(dropMap[res.type], 1)) res.health -= 1;
+                            if (survivor.addItem(dropMap[res.type], 1)) {
+                                res.health -= 1;
+                                survivor.addXP(10);
+                            }
                             survivor.actionTimer = 0;
                         }
                         taskSet = true;
@@ -216,8 +319,10 @@ export class AISystem {
                     survivor.isBowing = true;
                     survivor.actionTimer += deltaTime;
                     if (survivor.actionTimer > 1) {
-                        survivor.addItem('fiber', 1);
-                        res.isFalling = true;
+                        if (survivor.addItem('fiber', 1)) {
+                            res.isFalling = true;
+                            survivor.addXP(5);
+                        }
                         survivor.actionTimer = 0;
                         if (!this.findNextResource('tall_bush', survivor, state)) {
                             survivor.targetResource = null;
@@ -231,6 +336,7 @@ export class AISystem {
                     if (survivor.actionTimer >= 0.6) {
                         if (survivor.addItem(res.type, 1)) {
                             state.resources = state.resources.filter(r => r.id !== res.id);
+                            survivor.addXP(5);
                             if (!this.findNextResource(res.type, survivor, state)) {
                                 survivor.targetResource = null;
                             }
@@ -246,6 +352,7 @@ export class AISystem {
                         if (survivor.actionTimer >= 0.6) {
                             if (survivor.addItem('blueberry', res.berryCount)) {
                                 res.berryCount = 0;
+                                survivor.addXP(5);
                                 if (!this.findNextResource('blueberry_bush', survivor, state)) {
                                     survivor.targetResource = null;
                                 }

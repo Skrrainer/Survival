@@ -26,6 +26,102 @@ export class MeshBuilder {
         };
     }
 
+    buildDeerMesh() {
+        const group = new THREE.Group();
+        const mat = new THREE.MeshStandardMaterial({ color: '#8B4513' });
+        const matLight = new THREE.MeshStandardMaterial({ color: '#A0522D' });
+
+        const body = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 6), mat);
+        body.position.y = 4;
+        group.add(body);
+
+        const neck = new THREE.Mesh(new THREE.BoxGeometry(1.5, 3, 1.5), matLight);
+        neck.position.set(0, 6, 2.5);
+        neck.rotation.x = Math.PI / 6;
+        group.add(neck);
+
+        const head = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 3), mat);
+        head.position.set(0, 7.5, 3.5);
+        group.add(head);
+
+        const antlerGeo = new THREE.CylinderGeometry(0.1, 0.2, 2);
+        const antlerMat = new THREE.MeshStandardMaterial({ color: '#e0cda7' });
+        const leftAntler = new THREE.Mesh(antlerGeo, antlerMat);
+        leftAntler.position.set(-0.5, 8.5, 3);
+        leftAntler.rotation.z = Math.PI / 8;
+        const rightAntler = new THREE.Mesh(antlerGeo, antlerMat);
+        rightAntler.position.set(0.5, 8.5, 3);
+        rightAntler.rotation.z = -Math.PI / 8;
+        group.add(leftAntler, rightAntler);
+
+        const legGeo = new THREE.CylinderGeometry(0.3, 0.3, 4);
+        legGeo.translate(0, -2, 0);
+        const flLeg = new THREE.Mesh(legGeo, mat); flLeg.position.set(-1, 3, 2);
+        const frLeg = new THREE.Mesh(legGeo, mat); frLeg.position.set(1, 3, 2);
+        const blLeg = new THREE.Mesh(legGeo, mat); blLeg.position.set(-1, 3, -2);
+        const brLeg = new THREE.Mesh(legGeo, mat); brLeg.position.set(1, 3, -2);
+        group.add(flLeg, frLeg, blLeg, brLeg);
+
+        return { group, flLeg, frLeg, blLeg, brLeg, type: 'deer', body };
+    }
+
+    buildBunnyMesh() {
+        const group = new THREE.Group();
+        const mat = new THREE.MeshStandardMaterial({ color: '#ecf0f1' });
+
+        const body = new THREE.Mesh(new THREE.BoxGeometry(2, 1.5, 2.5), mat);
+        body.position.y = 1.2;
+        group.add(body);
+
+        const head = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), mat);
+        head.position.set(0, 2.2, 1);
+        group.add(head);
+
+        const earGeo = new THREE.BoxGeometry(0.3, 1.5, 0.3);
+        earGeo.translate(0, 0.75, 0);
+        const leftEar = new THREE.Mesh(earGeo, mat); leftEar.position.set(-0.3, 2.8, 1);
+        const rightEar = new THREE.Mesh(earGeo, mat); rightEar.position.set(0.3, 2.8, 1);
+        group.add(leftEar, rightEar);
+
+        const legGeo = new THREE.BoxGeometry(0.4, 0.8, 0.4);
+        legGeo.translate(0, -0.4, 0);
+        const flLeg = new THREE.Mesh(legGeo, mat); flLeg.position.set(-0.5, 0.8, 0.8);
+        const frLeg = new THREE.Mesh(legGeo, mat); frLeg.position.set(0.5, 0.8, 0.8);
+        const blLeg = new THREE.Mesh(legGeo, mat); blLeg.position.set(-0.5, 0.8, -0.8);
+        const brLeg = new THREE.Mesh(legGeo, mat); brLeg.position.set(0.5, 0.8, -0.8);
+        group.add(flLeg, frLeg, blLeg, brLeg);
+
+        return { group, flLeg, frLeg, blLeg, brLeg, type: 'bunny', body };
+    }
+
+    buildSlimeMesh(enemyState) {
+        const group = new THREE.Group();
+
+        const geo = new THREE.SphereGeometry(2.5, 16, 16);
+        geo.translate(0, 2.5, 0);
+        const mat = new THREE.MeshStandardMaterial({
+            color: '#2ecc71',
+            transparent: true,
+            opacity: 0.8,
+            roughness: 0.2,
+            metalness: 0.1
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.castShadow = true;
+        group.add(mesh);
+
+        const eyeGeo = new THREE.SphereGeometry(0.4, 8, 8);
+        const eyeMat = new THREE.MeshBasicMaterial({ color: '#111' });
+        const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+        leftEye.position.set(-1, 3.5, 2.2);
+        const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+        rightEye.position.set(1, 3.5, 2.2);
+        group.add(leftEye, rightEye);
+
+        group.userData = { isEnemy: true, enemy: enemyState, coreMesh: mesh };
+        return group;
+    }
+
     buildBlueberryBush(resource) {
         const group = new THREE.Group();
         const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.7, 4, 6), new THREE.MeshStandardMaterial({ color: '#4a3728', roughness: 1.0 }));
@@ -163,12 +259,18 @@ export class MeshBuilder {
         toolGroup.add(pickaxeVisual);
 
         const bowVisual = new THREE.Mesh(new THREE.TorusGeometry(4, 0.3, 8, 20, Math.PI), this.materials.wood);
-
-        // Exact calculated Euler mapping to force vertical bow facing +Z.
         bowVisual.rotation.set(Math.PI / 2, 0, Math.PI / 2);
-
         bowVisual.visible = false;
         toolGroup.add(bowVisual);
+
+        const swordVisual = new THREE.Group();
+        const swordHilt = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 2), this.materials.wood);
+        const swordBlade = new THREE.Mesh(new THREE.BoxGeometry(1.5, 8, 0.2), this.materials.iron);
+        swordBlade.position.set(0, 5, 0);
+        swordVisual.add(swordHilt, swordBlade);
+        swordVisual.rotation.x = Math.PI / 2;
+        swordVisual.visible = false;
+        toolGroup.add(swordVisual);
 
         const legGeo = new THREE.CylinderGeometry(1.2, 1.2, 8).translate(0, -4, 0);
         const leftLeg = new THREE.Mesh(legGeo, this.materials.clothDark);
@@ -181,7 +283,7 @@ export class MeshBuilder {
         rightLeg.castShadow = true;
         survivorBody.add(rightLeg);
 
-        return { mesh: survivorMesh, body: survivorBody, upperBody, leftArm, rightArm, leftLeg, rightLeg, backpackMesh, axeVisual, pickaxeVisual, bowVisual };
+        return { mesh: survivorMesh, body: survivorBody, upperBody, leftArm, rightArm, leftLeg, rightLeg, backpackMesh, axeVisual, pickaxeVisual, bowVisual, swordVisual };
     }
 
     buildChestMesh() {

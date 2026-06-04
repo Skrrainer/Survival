@@ -6,6 +6,7 @@ export class ResourceSystem {
         this.stateManager = stateManager;
         stateManager.getState().generatedChunks = new Set();
         stateManager.getState().animals = [];
+        stateManager.getState().enemies = [];
         this.update(stateManager.getState());
     }
 
@@ -80,6 +81,19 @@ export class ResourceSystem {
                     type: Math.random() > 0.5 ? 'deer' : 'bunny',
                     x: x, y: y,
                     hp: 20, speed: 30, timer: 0, rotation: 0
+                });
+            }
+        }
+
+        for (let i = 0; i < 3; i++) {
+            let x = clampX(offsetX + Math.random() * size);
+            let y = clampY(offsetY + Math.random() * size);
+            if (getElevation(x, y) > 6) {
+                state.enemies.push({
+                    id: Math.random().toString(),
+                    type: 'slime',
+                    x: x, y: y,
+                    hp: 30, speed: 15, jumpTimer: 0, rotation: 0
                 });
             }
         }
