@@ -168,9 +168,28 @@ export class AISystem {
                     e.y += Math.sin(e.targetAngle) * 45 * deltaTime;
                     e.rotation = e.targetAngle;
 
+                    // COLLISION & DAMAGE CHECK
+                    if (e.jumpProgress > 0.4 && e.jumpProgress < 0.6) {
+                        const dist = Math.hypot(survivor.x - e.x, survivor.y - e.y);
+                        if (dist < 15 && !window.godMode && !e.hasHit) {
+                            survivor.stats.health -= 15;
+                            e.hasHit = true; // Prevents multi-hit during one jump
+
+                            // Trigger Screen Shake & Red Glare
+                            state.screenShake = 0.5; // Duration in seconds
+                            state.redGlare = 0.3;    // Intensity
+
+                            // Bounce Slime Back
+                            e.targetAngle += Math.PI;
+                        }
+                    }
+
                     if (e.jumpProgress < 0.2) e.scaleY = 0.7;
                     else if (e.jumpProgress < 0.8) e.scaleY = 1.3;
-                    else e.scaleY = 0.8;
+                    else {
+                        e.scaleY = 0.8;
+                        e.hasHit = false; // Reset hit flag for next jump
+                    }
                 }
             }
 
