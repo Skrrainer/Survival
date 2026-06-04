@@ -12,7 +12,7 @@ import { Survivor } from './entities/Survivor.js';
 const stateManager = new StateManager();
 const renderer = new Renderer('game-canvas');
 
-// The UI Manager now takes the stateManager so it can execute crafts
+// The UI Manager takes the stateManager so it can execute crafts
 const uiManager = new UIManager(stateManager);
 
 // Instantiate Systems
@@ -26,8 +26,8 @@ resourceSystem.init(stateManager);
 const mainCharacter = new Survivor(0, 0);
 stateManager.setSurvivor(mainCharacter);
 
-// Boot the Input System
-inputSystem.init('game-canvas', renderer, stateManager);
+// Boot the Input System — now also receives uiManager for ghost placement
+inputSystem.init('game-canvas', renderer, stateManager, uiManager);
 
 // The Core Update Logic
 function update(deltaTime) {

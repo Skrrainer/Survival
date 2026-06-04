@@ -4,20 +4,24 @@ export class ResourceSystem {
     init(stateManager) {
         this.stateManager = stateManager;
         stateManager.getState().generatedChunks = new Set();
-
-        // Generate the starting area immediately
+        stateManager.getState().animals = [];
         this.update(stateManager.getState());
+    }
+
+    getElevation(x, z) {
+        const continent = Math.cos(x * 0.00005) * Math.cos(z * 0.00005) * 1200;
+        const mountains = Math.sin(x * 0.0002 + 123) * Math.cos(z * 0.0002 + 321) * 800;
+        const plains = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 120;
+        const details = Math.sin(x * 0.005) * Math.cos(z * 0.005) * 40;
+        return continent + mountains + plains + details - 880;
     }
 
     update(state) {
         if (!state.survivor) return;
 
         const chunkSize = 1000;
-        const px = state.survivor.x;
-        const py = state.survivor.y;
-
-        const cx = Math.floor(px / chunkSize);
-        const cy = Math.floor(py / chunkSize);
+        const cx = Math.floor(state.survivor.x / chunkSize);
+        const cy = Math.floor(state.survivor.y / chunkSize);
 
         for (let x = cx - 1; x <= cx + 1; x++) {
             for (let y = cy - 1; y <= cy + 1; y++) {
@@ -28,49 +32,64 @@ export class ResourceSystem {
                 }
             }
         }
+
+        const deltaTime = 1 / 60;
+        state.resources.forEach(r => {
+            if (r.type === 'blueberry_bush' && r.berryCount < r.maxBerries) {
+                r.berryRegenTimer += deltaTime;
+                if (r.berryRegenTimer >= r.berryRegenInterval) {
+                    r.berryRegenTimer = 0;
+                    r.berryCount = Math.min(r.maxBerries, r.berryCount + 1);
+                }
+            }
+            if (r.isFalling) {
+                r.fallAngle += deltaTime * 3;
+                if (r.fallAngle > Math.PI / 2 + 0.5) r.dead = true;
+            }
+        });
+
+        state.resources = state.resources.filter(r => !r.dead);
     }
 
     generateChunk(offsetX, offsetY, size, state) {
         const clampX = (val) => Math.max(offsetX + 50, Math.min(offsetX + size - 50, val));
         const clampY = (val) => Math.max(offsetY + 50, Math.min(offsetY + size - 50, val));
 
-        // Generate Forests
-        for (let i = 0; i < 3; i++) {
-            let forestX = offsetX + Math.random() * size;
-            let forestY = offsetY + Math.random() * size;
-            let trees = 5 + Math.random() * 10;
-            for (let j = 0; j < trees; j++) {
-                state.resources.push(new ResourceNode('tree', clampX(forestX + (Math.random() - 0.5) * 300), clampY(forestY + (Math.random() - 0.5) * 300)));
+        const trySpawn = (type, count, minElev = 4, maxElev = 250) => {
+            for (let i = 0; i < count; i++) {
+                let x = clampX(offsetX + Math.random() * size);
+                let y = clampY(offsetY + Math.random() * size);
+
+                const elev = this.getElevation(x, y);
+                if (elev > minElev && elev < maxElev) {
+                    let node = new ResourceNode(type, x, y);
+                    if (type === 'water') node.size = 12;
+                    state.resources.push(node);
+                }
             }
-        }
+        };
 
-        // Generate Rock Clusters
-        for (let i = 0; i < 2; i++) {
-            let rockX = offsetX + Math.random() * size;
-            let rockY = offsetY + Math.random() * size;
-            let rocks = 3 + Math.random() * 6;
-            for (let j = 0; j < rocks; j++) {
-                state.resources.push(new ResourceNode('rock', clampX(rockX + (Math.random() - 0.5) * 150), clampY(rockY + (Math.random() - 0.5) * 150)));
+        trySpawn('tree', 15, 6, 250);
+        trySpawn('rock', 8, 10, 500);
+        trySpawn('iron_node', 5, 300, 800);
+        trySpawn('coal_node', 5, 300, 800);
+        trySpawn('tall_bush', 10, 6, 200);
+        trySpawn('blueberry_bush', 8, 6, 200);
+        trySpawn('stick', 20, 2, 250);
+        trySpawn('pebble', 20, 2, 500);
+        trySpawn('water', 4, 3, 100);
+
+        for (let i = 0; i < 4; i++) {
+            let x = clampX(offsetX + Math.random() * size);
+            let y = clampY(offsetY + Math.random() * size);
+            if (this.getElevation(x, y) > 6) {
+                state.animals.push({
+                    id: Math.random().toString(),
+                    type: Math.random() > 0.5 ? 'deer' : 'bunny',
+                    x: x, y: y,
+                    hp: 20, speed: 30, timer: 0, rotation: 0
+                });
             }
-        }
-
-        // Generate Lakes
-        let lakeX = offsetX + Math.random() * size;
-        let lakeY = offsetY + Math.random() * size;
-        let water = 5 + Math.random() * 8;
-        for (let j = 0; j < water; j++) {
-            state.resources.push(new ResourceNode('water', clampX(lakeX + (Math.random() - 0.5) * 100), clampY(lakeY + (Math.random() - 0.5) * 100)));
-        }
-
-        // Floor Loot: Scatter 15 Sticks and 15 Pebbles randomly throughout the chunk
-        for (let i = 0; i < 15; i++) {
-            let sx = offsetX + Math.random() * size;
-            let sy = offsetY + Math.random() * size;
-            state.resources.push(new ResourceNode('stick', clampX(sx), clampY(sy)));
-
-            let px = offsetX + Math.random() * size;
-            let py = offsetY + Math.random() * size;
-            state.resources.push(new ResourceNode('pebble', clampX(px), clampY(py)));
         }
     }
 }

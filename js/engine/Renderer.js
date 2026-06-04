@@ -4,290 +4,400 @@ export class Renderer {
     constructor(canvasId) {
         this.canvas = document.getElementById(canvasId);
 
-        // Setup WebGL Renderer
         this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        this.renderer.dithering = true;
 
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color('#1e2b1e');
 
-        // Camera Setup
-        this.frustumSize = 800;
-        this.zoom = 1;
-        const aspect = window.innerWidth / window.innerHeight;
+        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
 
-        this.camera = new THREE.OrthographicCamera(
-            -this.frustumSize * aspect / 2,
-            this.frustumSize * aspect / 2,
-            this.frustumSize / 2,
-            -this.frustumSize / 2,
-            1,
-            3000
-        );
+        this.zoomDist = 800;
+        this.camAzimuth = Math.PI / 4;
+        this.camPolar = Math.PI / 3;
 
-        this.camera.position.set(1000, 1000, 1000);
-        this.camera.lookAt(this.scene.position);
+        window.addEventListener('resize', () => {
+            this.camera.aspect = window.innerWidth / window.innerHeight;
+            this.camera.updateProjectionMatrix();
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+        });
 
-        // Resize Event
-        window.addEventListener('resize', () => this.updateCamera());
-
-        // Scrollwheel Zoom Event
         this.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
-            const zoomSpeed = 0.1;
-            // Zoom out if scrolling down, in if scrolling up
-            if (e.deltaY > 0) this.zoom = Math.max(0.5, this.zoom - zoomSpeed);
-            else this.zoom = Math.min(3, this.zoom + zoomSpeed);
-            this.updateCamera();
+            if (e.deltaY > 0) this.zoomDist = Math.min(2500, this.zoomDist + 100);
+            else this.zoomDist = Math.max(300, this.zoomDist - 100);
         }, { passive: false });
 
         this.ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
         this.scene.add(this.ambientLight);
 
         this.dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        this.dirLight.position.set(200, 400, 300);
         this.dirLight.castShadow = true;
-        this.dirLight.shadow.camera.left = -1000;
-        this.dirLight.shadow.camera.right = 1000;
-        this.dirLight.shadow.camera.top = 1000;
-        this.dirLight.shadow.camera.bottom = -1000;
+        this.dirLight.shadow.camera.left = -1500;
+        this.dirLight.shadow.camera.right = 1500;
+        this.dirLight.shadow.camera.top = 1500;
+        this.dirLight.shadow.camera.bottom = -1500;
         this.dirLight.shadow.mapSize.width = 2048;
         this.dirLight.shadow.mapSize.height = 2048;
-        this.dirLight.shadow.bias = -0.0005;
         this.scene.add(this.dirLight);
 
-        const groundGeo = new THREE.PlaneGeometry(100000, 100000);
-        const groundMat = new THREE.MeshStandardMaterial({ color: '#2d4c22' });
-        const ground = new THREE.Mesh(groundGeo, groundMat);
-        ground.rotation.x = -Math.PI / 2;
-        ground.receiveShadow = true;
-        ground.userData = { isGround: true };
-        this.scene.add(ground);
+        this.groundGeo = new THREE.PlaneGeometry(12000, 12000, 200, 200);
+        this.groundGeo.rotateX(-Math.PI / 2);
 
-        const grassCount = 4000;
-        const grassGeo = new THREE.ConeGeometry(1.5, 5, 3);
-        const grassMat = new THREE.MeshStandardMaterial({ color: '#448530', flatShading: true });
+        const posAttr = this.groundGeo.attributes.position;
+        const colors = new Float32Array(posAttr.count * 3);
+        this.groundGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-        this.grassMesh = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
-        this.grassMesh.receiveShadow = true;
+        const groundMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true });
+        this.ground = new THREE.Mesh(this.groundGeo, groundMat);
+        this.ground.receiveShadow = true;
+        this.ground.userData = { isGround: true };
+        this.scene.add(this.ground);
 
-        const dummy = new THREE.Object3D();
-        for (let i = 0; i < grassCount; i++) {
-            const x = (Math.random() - 0.5) * 3000;
-            const z = (Math.random() - 0.5) * 3000;
-
-            dummy.position.set(x, 2.5, z);
-            dummy.rotation.y = Math.random() * Math.PI;
-            dummy.rotation.x = (Math.random() - 0.5) * 0.2;
-            dummy.rotation.z = (Math.random() - 0.5) * 0.2;
-
-            const scale = 0.5 + Math.random() * 1.5;
-            dummy.scale.set(scale, scale, scale);
-
-            dummy.updateMatrix();
-            this.grassMesh.setMatrixAt(i, dummy.matrix);
-        }
-        this.scene.add(this.grassMesh);
+        const seaMat = new THREE.MeshStandardMaterial({ color: '#1a5b7d', transparent: true, opacity: 0.8, depthWrite: false });
+        this.sea = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000), seaMat);
+        this.sea.rotation.x = -Math.PI / 2;
+        this.scene.add(this.sea);
 
         this.survivorMesh = null;
         this.resourceMeshes = new Map();
+        this.animalMeshes = new Map();
+        this.projectileMeshes = [];
+        this.ghostMesh = null;
+
+        this._treeTrunkGeo = new THREE.CylinderGeometry(0.2, 0.3, 1.5, 8);
+        this._treeTrunkGeo.translate(0, 0.75, 0);
+        this._treeLeavesGeo = new THREE.ConeGeometry(1.0, 2.5, 8);
+        this._treeLeavesGeo.translate(0, 2.6, 0);
+        this._rockGeo = new THREE.DodecahedronGeometry(1.0);
+        this._rockGeo.translate(0, 1.0, 0);
+        this._waterGeo = new THREE.CylinderGeometry(1, 1, 0.1, 16);
     }
 
-    updateCamera() {
-        const aspect = window.innerWidth / window.innerHeight;
-        const viewSize = this.frustumSize / this.zoom;
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.camera.left = -viewSize * aspect / 2;
-        this.camera.right = viewSize * aspect / 2;
-        this.camera.top = viewSize / 2;
-        this.camera.bottom = -viewSize / 2;
-        this.camera.updateProjectionMatrix();
+    getElevation(x, z) {
+        const continent = Math.cos(x * 0.00005) * Math.cos(z * 0.00005) * 1200;
+        const mountains = Math.sin(x * 0.0002 + 123) * Math.cos(z * 0.0002 + 321) * 800;
+        const plains = Math.sin(x * 0.001) * Math.cos(z * 0.001) * 120;
+        const details = Math.sin(x * 0.005) * Math.cos(z * 0.005) * 40;
+        return continent + mountains + plains + details - 880;
+    }
+
+    rotateCamera(dx, dy) {
+        this.camAzimuth -= dx * 0.005;
+        this.camPolar -= dy * 0.005;
+        this.camPolar = Math.max(0.1, Math.min(Math.PI / 2 - 0.1, this.camPolar));
+    }
+
+    createGhostMesh(itemType) {
+        if (this.ghostMesh) this.scene.remove(this.ghostMesh);
+        this.ghostMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(10, 10, 10),
+            new THREE.MeshBasicMaterial({ color: '#00ff88', transparent: true, opacity: 0.5 })
+        );
+        this.ghostMesh.userData = { isGhost: true };
+        this.scene.add(this.ghostMesh);
+    }
+
+    updateGhostMesh(x, z) {
+        if (this.ghostMesh) this.ghostMesh.position.set(x, this.getElevation(x, z) + 5, z);
+    }
+
+    removeGhostMesh() {
+        if (this.ghostMesh) { this.scene.remove(this.ghostMesh); this.ghostMesh = null; }
     }
 
     render(state) {
-        let px = 0;
-        let pz = 0;
+        let px = 0, pz = 0, playerY = 0;
         if (state.survivor) {
             px = state.survivor.x;
             pz = state.survivor.y;
+            playerY = this.getElevation(px, pz);
         }
 
-        this.camera.position.set(px + 800, 800, pz + 800);
-        this.camera.lookAt(px, 0, pz);
+        const camX = px + this.zoomDist * Math.sin(this.camPolar) * Math.sin(this.camAzimuth);
+        const camY = playerY + this.zoomDist * Math.cos(this.camPolar);
+        const camZ = pz + this.zoomDist * Math.sin(this.camPolar) * Math.cos(this.camAzimuth);
+        this.camera.position.set(camX, camY, camZ);
+        this.camera.lookAt(px, playerY + 10, pz);
 
-        if (this.grassMesh) {
-            this.grassMesh.position.x = Math.floor(px / 2000) * 2000;
-            this.grassMesh.position.z = Math.floor(pz / 2000) * 2000;
+        const snapX = Math.floor(px / 60) * 60;
+        const snapZ = Math.floor(pz / 60) * 60;
+        if (this.lastSnapX !== snapX || this.lastSnapZ !== snapZ) {
+            this.ground.position.set(snapX, 0, snapZ);
+            this.sea.position.set(snapX, 0, snapZ);
+            const posAttr = this.groundGeo.attributes.position;
+            const colAttr = this.groundGeo.attributes.color;
+            const c3 = new THREE.Color();
+            for (let i = 0; i < posAttr.count; i++) {
+                const worldX = snapX + posAttr.getX(i);
+                const worldZ = snapZ + posAttr.getZ(i);
+                const elev = this.getElevation(worldX, worldZ);
+                posAttr.setY(i, elev);
+
+                if (elev <= 5) c3.set('#e6d690');
+                else if (elev < 30) c3.set('#e6d690').lerp(new THREE.Color('#39602b'), (elev-5)/25);
+                else if (elev > 800) c3.set('#666666').lerp(new THREE.Color('#ffffff'), Math.min(1,(elev-800)/200));
+                else if (elev > 400) c3.set('#39602b').lerp(new THREE.Color('#666666'), Math.min(1,(elev-400)/400));
+                else c3.set('#39602b');
+
+                colAttr.setXYZ(i, c3.r, c3.g, c3.b);
+            }
+            posAttr.needsUpdate = true;
+            colAttr.needsUpdate = true;
+            this.groundGeo.computeVertexNormals();
+            this.lastSnapX = snapX; this.lastSnapZ = snapZ;
         }
 
-        // --- DAY / NIGHT CYCLE VISUALS ---
         const sunAngle = state.time.sunAngle;
-        this.dirLight.position.x = px + Math.cos(sunAngle) * 1000;
-        this.dirLight.position.y = Math.sin(sunAngle) * 1000;
-        this.dirLight.position.z = pz + Math.cos(sunAngle) * 500;
-
-        this.dirLight.target.position.set(px, 0, pz);
+        this.dirLight.position.set(px + Math.cos(sunAngle)*2000, playerY + Math.sin(sunAngle)*2000, pz + Math.cos(sunAngle)*1000);
+        this.dirLight.target.position.set(px, playerY, pz);
         this.dirLight.target.updateMatrixWorld();
-
         this.dirLight.intensity = state.time.directionalLightIntensity;
         this.ambientLight.intensity = state.time.ambientLightIntensity;
+        this.scene.background = new THREE.Color('#020406').lerp(new THREE.Color('#65a1c9'), state.time.skyTransition);
 
-        if (!this.skyDay) {
-            this.skyDay = new THREE.Color('#1e2b1e');
-            this.skyNight = new THREE.Color('#020406');
-            this.currentSky = new THREE.Color();
-        }
-
-        this.scene.background = this.currentSky.copy(this.skyNight).lerp(this.skyDay, state.time.skyTransition);
-
-        // --- RENDER SURVIVOR ---
         if (state.survivor) {
             if (!this.survivorMesh) {
                 this.survivorMesh = new THREE.Group();
-                this.scene.add(this.survivorMesh);
 
-                const scale = state.survivor.size;
+                this.survivorBody = new THREE.Group();
+                this.survivorMesh.add(this.survivorBody);
 
-                const torsoGeo = new THREE.BoxGeometry(0.6 * scale, 1.2 * scale, 0.4 * scale);
-                const torsoMat = new THREE.MeshStandardMaterial({ color: state.survivor.color, roughness: 0.3 });
-                const torso = new THREE.Mesh(torsoGeo, torsoMat);
+                this.upperBody = new THREE.Group();
+                this.upperBody.position.y = 10;
+                this.survivorBody.add(this.upperBody);
+
+                const torso = new THREE.Mesh(new THREE.BoxGeometry(6, 12, 4), new THREE.MeshStandardMaterial({ color: '#3498db' }));
+                torso.position.y = 4;
                 torso.castShadow = true;
-                torso.position.y = 0.8 * scale;
-                this.survivorMesh.add(torso);
+                this.upperBody.add(torso);
 
-                const headGeo = new THREE.SphereGeometry(0.3 * scale, 32, 32);
-                const headMat = new THREE.MeshStandardMaterial({ color: state.survivor.color, roughness: 0.3 });
-                const head = new THREE.Mesh(headGeo, headMat);
+                const head = new THREE.Mesh(new THREE.SphereGeometry(3), new THREE.MeshStandardMaterial({ color: '#f1c27d' }));
+                head.position.y = 12;
                 head.castShadow = true;
-                head.position.y = 1.6 * scale;
-                this.survivorMesh.add(head);
+                this.upperBody.add(head);
 
-                const limbMat = new THREE.MeshStandardMaterial({ color: state.survivor.color, roughness: 0.3 });
-                const armGeo = new THREE.CylinderGeometry(0.1 * scale, 0.1 * scale, 1.0 * scale, 12);
+                const armGeo = new THREE.CylinderGeometry(1, 1, 10);
+                armGeo.translate(0, -5, 0);
+                this.leftArm = new THREE.Mesh(armGeo, new THREE.MeshStandardMaterial({ color: '#f1c27d' }));
+                this.leftArm.position.set(-4.5, 9, 0);
+                this.leftArm.castShadow = true;
+                this.upperBody.add(this.leftArm);
 
-                const leftArm = new THREE.Mesh(armGeo, limbMat);
-                leftArm.position.set(-0.45 * scale, 0.8 * scale, 0);
-                leftArm.rotation.z = -Math.PI / 12;
-                leftArm.castShadow = true;
-                this.survivorMesh.add(leftArm);
+                this.rightArm = new THREE.Mesh(armGeo, new THREE.MeshStandardMaterial({ color: '#f1c27d' }));
+                this.rightArm.position.set(4.5, 9, 0);
+                this.rightArm.castShadow = true;
+                this.upperBody.add(this.rightArm);
 
-                const rightArm = new THREE.Mesh(armGeo, limbMat);
-                rightArm.position.set(0.45 * scale, 0.8 * scale, 0);
-                rightArm.rotation.z = Math.PI / 12;
-                rightArm.castShadow = true;
-                this.survivorMesh.add(rightArm);
+                const legGeo = new THREE.CylinderGeometry(1.2, 1.2, 8);
+                legGeo.translate(0, -4, 0);
+                this.leftLeg = new THREE.Mesh(legGeo, new THREE.MeshStandardMaterial({ color: '#2c3e50' }));
+                this.leftLeg.position.set(-2, 8, 0);
+                this.leftLeg.castShadow = true;
+                this.survivorBody.add(this.leftLeg);
 
-                const legGeo = new THREE.CylinderGeometry(0.12 * scale, 0.12 * scale, 0.7 * scale, 12);
-
-                const leftLeg = new THREE.Mesh(legGeo, limbMat);
-                leftLeg.position.set(-0.2 * scale, 0.35 * scale, 0);
-                leftLeg.castShadow = true;
-                this.survivorMesh.add(leftLeg);
-
-                const rightLeg = new THREE.Mesh(legGeo, limbMat);
-                rightLeg.position.set(0.2 * scale, 0.35 * scale, 0);
-                rightLeg.castShadow = true;
-                this.survivorMesh.add(rightLeg);
+                this.rightLeg = new THREE.Mesh(legGeo, new THREE.MeshStandardMaterial({ color: '#2c3e50' }));
+                this.rightLeg.position.set(2, 8, 0);
+                this.rightLeg.castShadow = true;
+                this.survivorBody.add(this.rightLeg);
+                this.scene.add(this.survivorMesh);
             }
 
-            this.survivorMesh.position.x = px;
-            this.survivorMesh.position.z = pz;
+            const inOcean = playerY < 2;
+            const inWater = inOcean || state.survivor.inLake;
 
-            const pulse = 1 + Math.abs(Math.sin(Date.now() / 300)) * 0.05;
-            this.survivorMesh.scale.set(pulse, pulse, pulse);
+            this.survivorMesh.position.set(px, inWater ? Math.max(playerY - 6, 0) : playerY, pz);
+            if (state.survivor.rotation !== undefined) this.survivorMesh.rotation.y = state.survivor.rotation;
+
+            if (inWater) {
+                this.survivorBody.rotation.x = Math.PI / 2;
+                this.upperBody.rotation.x = 0;
+
+                const swim = Math.sin(Date.now() * 0.005) * 0.5;
+                this.leftArm.rotation.set(0, 0, -Math.PI / 2 + swim);
+                this.rightArm.rotation.set(0, 0, Math.PI / 2 - swim);
+                this.leftLeg.rotation.set(swim, 0, 0);
+                this.rightLeg.rotation.set(-swim, 0, 0);
+            } else {
+                this.survivorBody.rotation.x = 0;
+
+                if (state.survivor.isBowing) {
+                    this.upperBody.rotation.x = Math.PI / 3.5;
+                    this.leftArm.rotation.set(-Math.PI / 8, 0, 0);
+                    this.rightArm.rotation.set(-Math.PI / 8, 0, 0);
+                } else if (state.survivor.isChopping) {
+                    const swing = -Math.PI / 2 + Math.sin(Date.now() * 0.015) * 1.5;
+                    this.upperBody.rotation.x = -Math.PI / 12;
+                    this.leftArm.rotation.set(swing, 0, 0);
+                    this.rightArm.rotation.set(swing, 0, 0);
+                } else if (state.survivor.isMining) {
+                    const swing = -Math.PI / 2 + Math.sin(Date.now() * 0.015) * 1.5;
+                    this.upperBody.rotation.x = -Math.PI / 8;
+                    this.leftArm.rotation.set(swing, 0, 0);
+                    this.rightArm.rotation.set(swing, 0, 0);
+                } else {
+                    this.upperBody.rotation.x = state.aiming ? 0 : (this.upperBody.rotation.x * 0.8);
+
+                    if (state.aiming) {
+                        this.leftArm.rotation.set(-Math.PI / 2, 0, 0);
+                        this.rightArm.rotation.set(-Math.PI / 2, 0, 0);
+                    } else if (state.survivor.isMoving) {
+                        const walk = Math.sin(Date.now() * 0.015) * 0.8;
+                        this.leftArm.rotation.set(-walk, 0, 0);
+                        this.rightArm.rotation.set(walk, 0, 0);
+                        this.leftLeg.rotation.set(walk, 0, 0);
+                        this.rightLeg.rotation.set(-walk, 0, 0);
+                    } else {
+                        this.leftArm.rotation.x *= 0.8; this.rightArm.rotation.x *= 0.8;
+                        this.leftLeg.rotation.x *= 0.8; this.rightLeg.rotation.x *= 0.8;
+                        this.leftArm.rotation.z = 0; this.rightArm.rotation.z = 0;
+                    }
+                }
+            }
         }
 
-        // --- RESOURCE GARBAGE COLLECTION ---
-        const currentIds = new Set(state.resources.map(r => r.id));
+        if (state.aiming && state.aimTarget) {
+            const points = [];
+            let ax = px, ay = playerY + 10, az = pz;
+            const power = state.aimPower;
+            const dx = state.aimTarget.x - px, dz = state.aimTarget.z - pz;
+            const angle = Math.atan2(dz, dx);
+            let vx = Math.cos(angle) * power, vy = power * 0.4, vz = Math.sin(angle) * power;
+            const dt = 0.05;
+            for(let i=0; i<40; i++) {
+                points.push(new THREE.Vector3(ax, ay, az));
+                ax += vx * dt; ay += vy * dt; az += vz * dt;
+                vy -= 200 * dt;
+                if (ay < this.getElevation(ax, az)) break;
+            }
+            if (!this.trajLine) {
+                this.trajLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: 0xff0000 }));
+                this.scene.add(this.trajLine);
+            } else {
+                this.trajLine.geometry.setFromPoints(points);
+                this.trajLine.visible = true;
+            }
+        } else if (this.trajLine) {
+            this.trajLine.visible = false;
+        }
+
+        const activeAnimals = new Set(state.animals?.map(a => a.id));
+        for (let [id, mesh] of this.animalMeshes.entries()) {
+            if (!activeAnimals.has(id)) { this.scene.remove(mesh); this.animalMeshes.delete(id); }
+        }
+        if (state.animals) {
+            state.animals.forEach(a => {
+                let mesh = this.animalMeshes.get(a.id);
+                if (!mesh) {
+                    mesh = new THREE.Mesh(
+                        new THREE.BoxGeometry(a.type === 'deer' ? 8 : 4, a.type === 'deer' ? 8 : 4, a.type === 'deer' ? 12 : 4),
+                        new THREE.MeshStandardMaterial({ color: a.type === 'deer' ? '#8B4513' : '#ecf0f1' })
+                    );
+                    mesh.castShadow = true;
+                    this.scene.add(mesh);
+                    this.animalMeshes.set(a.id, mesh);
+                }
+                mesh.position.set(a.x, this.getElevation(a.x, a.y) + (a.type==='deer'?4:2), a.y);
+                mesh.rotation.y = a.rotation;
+            });
+        }
+
+        this.projectileMeshes.forEach(pm => this.scene.remove(pm));
+        this.projectileMeshes = [];
+        if (state.projectiles) {
+            state.projectiles.forEach(p => {
+                const arr = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 4), new THREE.MeshStandardMaterial({color: '#e74c3c'}));
+                arr.position.set(p.x, p.y, p.z);
+                arr.rotation.x = Math.PI / 2;
+                this.scene.add(arr);
+                this.projectileMeshes.push(arr);
+            });
+        }
+
+        const activeRes = new Set(state.resources.map(r => r.id));
         for (let [id, mesh] of this.resourceMeshes.entries()) {
-            if (!currentIds.has(id)) {
-                this.scene.remove(mesh);
-                this.resourceMeshes.delete(id);
-            }
+            if (!activeRes.has(id)) { this.scene.remove(mesh); this.resourceMeshes.delete(id); }
         }
-
-        // --- RENDER NEW RESOURCES ---
-        state.resources.forEach((resource) => {
-            const key = resource.id;
-
-            if (!this.resourceMeshes.has(key)) {
+        state.resources.forEach((r) => {
+            if (!this.resourceMeshes.has(r.id)) {
                 let mesh;
 
-                if (resource.type === 'tree') {
+                if (r.type === 'tree') {
                     mesh = new THREE.Group();
-                    const trunkGeo = new THREE.CylinderGeometry(resource.size * 0.2, resource.size * 0.3, resource.size * 1.5, 8);
-                    const trunkMat = new THREE.MeshStandardMaterial({ color: '#5c4033' });
-                    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-                    trunk.position.y = resource.size * 0.75;
-                    trunk.castShadow = true;
-                    trunk.receiveShadow = true;
+                    const trunk = new THREE.Mesh(this._treeTrunkGeo, new THREE.MeshStandardMaterial({ color: '#5c4033' }));
+                    trunk.castShadow = true; trunk.receiveShadow = true;
                     mesh.add(trunk);
-
-                    const leavesGeo = new THREE.ConeGeometry(resource.size, resource.size * 2.5, 8);
-                    const leavesMat = new THREE.MeshStandardMaterial({ color: resource.color });
-                    const leaves = new THREE.Mesh(leavesGeo, leavesMat);
-                    leaves.position.y = (resource.size * 1.5) + (resource.size * 1.25) - 2;
-                    leaves.castShadow = true;
-                    leaves.receiveShadow = true;
+                    const leaves = new THREE.Mesh(this._treeLeavesGeo, new THREE.MeshStandardMaterial({ color: r.color }));
+                    leaves.castShadow = true; leaves.receiveShadow = true;
                     mesh.add(leaves);
-
-                } else if (resource.type === 'rock') {
-                    const geo = new THREE.DodecahedronGeometry(resource.size);
-                    const mat = new THREE.MeshStandardMaterial({ color: resource.color, flatShading: true });
-                    mesh = new THREE.Mesh(geo, mat);
-                    mesh.position.y = resource.size;
-                    mesh.castShadow = true;
+                    mesh.scale.setScalar(r.size);
+                    mesh.userData = { offset: 0 };
+                } else if (r.type === 'rock' || r.type === 'iron_node' || r.type === 'coal_node') {
+                    mesh = new THREE.Mesh(this._rockGeo, new THREE.MeshStandardMaterial({ color: r.color, flatShading: true }));
+                    mesh.castShadow = true; mesh.receiveShadow = true;
+                    mesh.scale.setScalar(r.size);
+                    mesh.userData = { offset: 0 };
+                } else if (r.type === 'water') {
+                    mesh = new THREE.Mesh(this._waterGeo, new THREE.MeshStandardMaterial({ color: '#2980b9', transparent: true, opacity: 0.65, depthWrite: false }));
+                    mesh.scale.set(r.size, 1, r.size);
                     mesh.receiveShadow = true;
-
-                } else if (resource.type === 'water') {
-                    const geo = new THREE.BoxGeometry(resource.size * 2, 4, resource.size * 1.5);
-                    const mat = new THREE.MeshStandardMaterial({ color: resource.color, transparent: true, opacity: 0.7 });
-                    mesh = new THREE.Mesh(geo, mat);
-                    mesh.position.y = 2;
+                    mesh.userData = { offset: 0.5 };
+                } else if (r.type === 'stick') {
+                    mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 8, 6), new THREE.MeshStandardMaterial({ color: r.color }));
+                    mesh.rotation.z = Math.PI / 2; mesh.rotation.y = Math.random() * Math.PI;
                     mesh.castShadow = true;
-                    mesh.receiveShadow = true;
-
-                } else if (resource.type === 'stick') {
-                    const geo = new THREE.CylinderGeometry(0.5, 0.5, 8, 6);
-                    const mat = new THREE.MeshStandardMaterial({ color: resource.color });
-                    mesh = new THREE.Mesh(geo, mat);
-                    mesh.rotation.z = Math.PI / 2;
-                    mesh.rotation.y = Math.random() * Math.PI;
-                    mesh.position.y = 1;
+                    mesh.userData = { offset: 1.5 };
+                } else if (r.type === 'pebble') {
+                    mesh = new THREE.Mesh(new THREE.DodecahedronGeometry(r.size), new THREE.MeshStandardMaterial({ color: r.color, flatShading: true }));
                     mesh.castShadow = true;
-
-                } else if (resource.type === 'pebble') {
-                    const geo = new THREE.DodecahedronGeometry(resource.size);
-                    const mat = new THREE.MeshStandardMaterial({ color: resource.color, flatShading: true });
-                    mesh = new THREE.Mesh(geo, mat);
-                    mesh.position.y = 1.5;
-                    mesh.castShadow = true;
-
-                } else if (resource.type === 'crafting_table') {
+                    mesh.userData = { offset: 1.5 };
+                } else if (r.type === 'tall_bush') {
                     mesh = new THREE.Group();
-                    const legsGeo = new THREE.BoxGeometry(8, 8, 8);
-                    const legsMat = new THREE.MeshStandardMaterial({ color: '#5c4033' });
-                    const legs = new THREE.Mesh(legsGeo, legsMat);
-                    legs.position.y = 4;
-                    mesh.add(legs);
-
-                    const topGeo = new THREE.BoxGeometry(12, 2, 12);
-                    const topMat = new THREE.MeshStandardMaterial({ color: resource.color });
-                    const top = new THREE.Mesh(topGeo, topMat);
-                    top.position.y = 9;
-                    mesh.add(top);
+                    const base = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 8), new THREE.MeshStandardMaterial({ color: r.color }));
+                    base.position.y = 4; base.castShadow = true;
+                    mesh.add(base);
+                    mesh.userData = { offset: 0 };
+                } else if (r.type === 'crafting_table') {
+                    mesh = new THREE.Group();
+                    const legs = new THREE.Mesh(new THREE.BoxGeometry(8, 8, 8), new THREE.MeshStandardMaterial({ color: '#5c4033' }));
+                    legs.position.y = 4; mesh.add(legs);
+                    const top = new THREE.Mesh(new THREE.BoxGeometry(12, 2, 12), new THREE.MeshStandardMaterial({ color: r.color }));
+                    top.position.y = 9; mesh.add(top);
                     mesh.castShadow = true;
+                    mesh.userData = { offset: 0 };
+                } else if (r.type === 'furnace') {
+                    mesh = new THREE.Group();
+                    const body = new THREE.Mesh(new THREE.BoxGeometry(10, 12, 10), new THREE.MeshStandardMaterial({ color: '#34495e' }));
+                    body.position.y = 6; mesh.add(body);
+                    const fire = new THREE.Mesh(new THREE.BoxGeometry(6, 4, 1), new THREE.MeshBasicMaterial({ color: '#e67e22' }));
+                    fire.position.set(0, 4, 5); mesh.add(fire);
+                    mesh.castShadow = true;
+                    mesh.userData = { offset: 0 };
+                } else if (r.type === 'campfire') {
+                    mesh = new THREE.Group();
+                    const logs = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 6), new THREE.MeshStandardMaterial({ color: '#5c4033' }));
+                    logs.rotation.z = Math.PI / 2; logs.position.y = 1; mesh.add(logs);
+                    const fire = new THREE.Mesh(new THREE.ConeGeometry(3, 6), new THREE.MeshBasicMaterial({ color: '#e74c3c' }));
+                    fire.position.y = 4; mesh.add(fire);
+                    mesh.castShadow = true;
+                    mesh.userData = { offset: 0 };
+                } else {
+                    mesh = new THREE.Mesh(new THREE.BoxGeometry(r.size, r.size, r.size), new THREE.MeshStandardMaterial({ color: r.color || '#fff' }));
+                    mesh.position.y = r.size / 2;
+                    mesh.userData = { offset: 1.0 };
                 }
 
-                mesh.position.x = resource.x;
-                mesh.position.z = resource.y;
-                mesh.userData = { resource: resource };
-
+                mesh.position.set(r.x, this.getElevation(r.x, r.y) + mesh.userData.offset, r.y);
                 this.scene.add(mesh);
-                this.resourceMeshes.set(key, mesh);
+                this.resourceMeshes.set(r.id, mesh);
+            } else {
+                const mesh = this.resourceMeshes.get(r.id);
+                if (r.isFalling) {
+                    mesh.rotation.x = r.fallAngle;
+                    mesh.position.y = this.getElevation(r.x, r.y) + mesh.userData.offset - (r.fallAngle * 5);
+                }
             }
         });
 

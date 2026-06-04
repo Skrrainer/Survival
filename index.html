@@ -18,29 +18,49 @@
             <h2 style="margin-top: 0; font-size: 1.2rem; color: #e2a94a;">Status</h2>
             <p style="margin: 5px 0;">Time: <span id="game-time">08:00</span></p>
             <p style="margin: 5px 0;">Task: <span id="current-task">Idle</span></p>
-            <p style="margin: 10px 0 0 0; font-size: 0.8rem; color: #777;">[I] Inventory &nbsp; [C] Crafting<br>[Z] Sleep / Fast Forward</p>
+            <p style="margin: 10px 0 0 0; font-size: 0.8rem; color: #777;">[Left Click + Drag] Spin Camera<br>[Right Click + Drag] Aim Bow<br>[I] Inventory &nbsp; [C] Crafting<br>[Z] Sleep / Fast Forward</p>
         </div>
 
         <div id="stats-panel" style="position: absolute; bottom: 20px; left: 20px; background: rgba(0, 0, 0, 0.6); padding: 10px; width: 180px; border-radius: 4px; pointer-events: auto;">
             <div class="vital-container">
+                <div class="vital-header"><span>❤️ Health</span> <span id="stat-health-text">100%</span></div>
+                <div class="vital-bar-bg"><div id="bar-health" class="vital-bar" style="width: 100%; background: #e74c3c;"></div></div>
+            </div>
+            <div class="vital-container">
                 <div class="vital-header"><span>💧 Hydration</span> <span id="stat-hydration-text">100%</span></div>
-                <div class="vital-bar-bg"><div id="bar-hydration" class="vital-bar fill-hydration" style="width: 100%;"></div></div>
+                <div class="vital-bar-bg"><div id="bar-hydration" class="vital-bar fill-hydration" style="width: 100%; background: #3498db;"></div></div>
             </div>
             <div class="vital-container" style="margin-bottom: 0;">
                 <div class="vital-header"><span>🍖 Satiety</span> <span id="stat-satiety-text">100%</span></div>
-                <div class="vital-bar-bg"><div id="bar-satiety" class="vital-bar fill-satiety" style="width: 100%;"></div></div>
+                <div class="vital-bar-bg"><div id="bar-satiety" class="vital-bar fill-satiety" style="width: 100%; background: #f1c40f;"></div></div>
             </div>
         </div>
 
         <div id="crafting-panel" style="display: none; background: rgba(0, 0, 0, 0.85); padding: 15px; width: 340px; border: 1px solid #333; position: absolute; top: 20px; left: 20px; pointer-events: auto;">
             <h2 style="margin-top: 0; font-size: 1.2rem; color: #e67e22;">Hand Crafting</h2>
+            <div class="recipe"><span>Rope (3 Fiber)</span><button id="craft-rope" class="btn-craft">Craft</button></div>
             <div class="recipe"><span>Stone Axe (2 Stick, 2 Pebble)</span><button id="craft-axe" class="btn-craft">Craft</button></div>
             <div class="recipe"><span>Stone Pickaxe (2 Stick, 3 Pebble)</span><button id="craft-pickaxe" class="btn-craft">Craft</button></div>
+            <div class="recipe"><span>Campfire (5 Wood, 5 Pebble)</span><button id="craft-campfire" class="btn-craft">Place</button></div>
             <div class="recipe"><span>Crafting Table (10 Wood)</span><button id="craft-table" class="btn-craft">Place</button></div>
             <div id="advanced-recipes" style="display: none; margin-top: 15px; border-top: 1px solid #555; padding-top: 15px;">
                 <h3 style="margin-top: 0; font-size: 1rem; color: #3498db;">Workbench</h3>
+                <div class="recipe"><span>Bow (2 Wood, 2 Rope)</span><button id="craft-bow" class="btn-craft">Craft</button></div>
+                <div class="recipe"><span>Arrow (1 Stick, 1 Pebble)</span><button id="craft-arrow" class="btn-craft">Craft</button></div>
+                <div class="recipe"><span>Furnace (10 Stone)</span><button id="craft-furnace" class="btn-craft">Place</button></div>
                 <div class="recipe"><span>Wood Sword (5 Wood, 2 Stick)</span><button id="craft-sword" class="btn-craft">Craft</button></div>
                 <div class="recipe"><span>Leather Helmet (5 Leather)</span><button id="craft-helmet" class="btn-craft">Craft</button></div>
+            </div>
+        </div>
+
+        <div id="station-panel" style="display: none; background: rgba(0, 0, 0, 0.85); padding: 15px; width: 300px; border: 1px solid #333; position: absolute; top: 20px; left: 380px; pointer-events: auto;">
+            <div id="furnace-ui" style="display: none;">
+                <h2 style="margin-top: 0; font-size: 1.2rem; color: #7f8c8d;">Furnace</h2>
+                <div class="recipe"><span>Smelt Iron (1 Iron Ore, 1 Coal)</span><button id="action-smelt" class="btn-craft">Smelt</button></div>
+            </div>
+            <div id="campfire-ui" style="display: none;">
+                <h2 style="margin-top: 0; font-size: 1.2rem; color: #e67e22;">Campfire</h2>
+                <div class="recipe"><span>Cook Meat (1 Raw Meat, 1 Wood)</span><button id="action-cook" class="btn-craft">Cook</button></div>
             </div>
         </div>
 

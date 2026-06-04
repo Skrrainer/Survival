@@ -9,8 +9,9 @@ export class Survivor {
         this.targetY = y;
         this.targetResource = null;
         this.actionTimer = 0;
+        this.inLake = false;
 
-        this.inventoryCapacity = 10;
+        this.inventoryCapacity = 15;
         this.inventory = new Array(this.inventoryCapacity).fill(null);
 
         this.equipped = {
@@ -23,11 +24,10 @@ export class Survivor {
             weapon: null
         };
 
-        this.stats = { hydration: 100.0, satiety: 100.0 };
+        this.stats = { health: 100.0, hydration: 100.0, satiety: 100.0 };
         this.currentTask = 'Idle';
     }
 
-    // Logic to map item strings to equipment slots
     getSlotForItem(itemType) {
         if (itemType === 'stone_axe') return 'axe';
         if (itemType === 'stone_pickaxe') return 'pickaxe';
@@ -35,20 +35,16 @@ export class Survivor {
         if (itemType.includes('chest')) return 'chest';
         if (itemType.includes('pants')) return 'pants';
         if (itemType.includes('shoes')) return 'shoes';
-        if (itemType.includes('sword')) return 'weapon';
+        if (itemType === 'bow' || itemType.includes('sword')) return 'weapon';
         return null;
     }
 
     equip(itemType) {
         const slot = this.getSlotForItem(itemType);
         if (!slot) return;
-
-        // If something is already equipped, put it back in inventory first
         if (this.equipped[slot]) {
             this.unequip(slot);
         }
-
-        // Remove one instance from inventory and put in slot
         if (this.removeItem(itemType, 1)) {
             this.equipped[slot] = itemType;
         }
