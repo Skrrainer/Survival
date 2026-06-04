@@ -4,9 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Active Survival 3D</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="src/css/style.css">
     <script type="importmap">
-        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+        { 
+            "imports": { 
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm"
+            } 
+        }
     </script>
 </head>
 <body>
@@ -44,36 +49,26 @@
 
         <div id="crafting-panel" class="panel" style="display: none; padding: 20px; width: 600px; position: absolute; top: 20px; left: 20px;">
             <h2 class="panel-title" style="color: #2ecc71;">Hand Crafting</h2>
-            <div class="recipe-grid">
-                <div class="recipe-card"><div class="recipe-info"><span class="recipe-icon">🪢</span><div class="recipe-text"><h4>Rope</h4><p>3 Fiber</p></div></div><button id="craft-rope" class="btn-craft">Craft</button></div>
-                <div class="recipe-card"><div class="recipe-info"><span class="recipe-icon">🪓</span><div class="recipe-text"><h4>Stone Axe</h4><p>2 Stick, 2 Pebble</p></div></div><button id="craft-axe" class="btn-craft">Craft</button></div>
-                <div class="recipe-card"><div class="recipe-info"><span class="recipe-icon">⛏️</span><div class="recipe-text"><h4>Stone Pickaxe</h4><p>2 Stick, 3 Pebble</p></div></div><button id="craft-pickaxe" class="btn-craft">Craft</button></div>
-                <div class="recipe-card"><div class="recipe-info"><span class="recipe-icon">📦</span><div class="recipe-text"><h4>Storage Chest</h4><p>8 Wood</p></div></div><button id="craft-chest" class="btn-craft">Craft</button></div>
-                <div class="recipe-card"><div class="recipe-info"><span class="recipe-icon">🏕️</span><div class="recipe-text"><h4>Campfire</h4><p>5 Wood, 5 Pebble</p></div></div><button id="craft-campfire" class="btn-craft">Craft</button></div>
-                <div class="recipe-card"><div class="recipe-info"><span class="recipe-icon">🛠️</span><div class="recipe-text"><h4>Crafting Table</h4><p>10 Wood</p></div></div><button id="craft-table" class="btn-craft">Craft</button></div>
-            </div>
+            <div id="recipes-hand" class="recipe-grid"></div>
 
             <div id="advanced-recipes" style="display: none; margin-top: 20px;">
                 <h2 class="panel-title" style="color: #3498db;">Workbench</h2>
-                <div class="recipe-grid">
-                    <div class="recipe-card"><div class="recipe-info"><span class="recipe-icon">🏹</span><div class="recipe-text"><h4>Wooden Bow</h4><p>2 Wood, 2 Rope</p></div></div><button id="craft-bow" class="btn-craft">Craft</button></div>
-                    <div class="recipe-card"><div class="recipe-info"><span class="recipe-icon">🎯</span><div class="recipe-text"><h4>Stone Arrow</h4><p>1 Stick, 1 Pebble</p></div></div><button id="craft-arrow" class="btn-craft">Craft</button></div>
-                    <div class="recipe-card"><div class="recipe-info"><span class="recipe-icon">🎒</span><div class="recipe-text"><h4>Backpack</h4><p>5 Leather, 2 Rope</p></div></div><button id="craft-backpack" class="btn-craft">Craft</button></div>
-                    <div class="recipe-card"><div class="recipe-info"><span class="recipe-icon">🧱</span><div class="recipe-text"><h4>Stone Furnace</h4><p>10 Stone</p></div></div><button id="craft-furnace" class="btn-craft">Craft</button></div>
-                    <div class="recipe-card"><div class="recipe-info"><span class="recipe-icon">🗡️</span><div class="recipe-text"><h4>Wood Sword</h4><p>5 Wood, 2 Stick</p></div></div><button id="craft-sword" class="btn-craft">Craft</button></div>
-                    <div class="recipe-card"><div class="recipe-info"><span class="recipe-icon">🪖</span><div class="recipe-text"><h4>Leather Helmet</h4><p>5 Leather</p></div></div><button id="craft-helmet" class="btn-craft">Craft</button></div>
-                </div>
+                <div id="recipes-workbench" class="recipe-grid"></div>
             </div>
         </div>
 
-        <div id="station-panel" class="panel" style="display: none; padding: 20px; width: 340px; position: absolute; top: 20px; left: 640px;">
+        <div id="station-panel" class="panel" style="display: none; padding: 20px; width: 340px; position: absolute; top: 20px; left: 680px;">
             <div id="furnace-ui" style="display: none;">
                 <h2 class="panel-title" style="color: #e74c3c;">Furnace</h2>
-                <div class="recipe-card" style="margin-top:10px;"><div class="recipe-info"><span class="recipe-icon">🔩</span><div class="recipe-text"><h4>Smelt Iron</h4><p>1 Iron Ore, 1 Coal</p></div></div><button id="action-smelt" class="btn-craft">Craft</button></div>
+                <div id="recipes-furnace" class="recipe-grid" style="grid-template-columns: 1fr;"></div>
+            </div>
+            <div id="blacksmith-ui" style="display: none; margin-top: 15px;">
+                <h2 class="panel-title" style="color: #95a5a6;">Blacksmith</h2>
+                <div id="recipes-blacksmith" class="recipe-grid" style="grid-template-columns: 1fr;"></div>
             </div>
             <div id="campfire-ui" style="display: none; margin-top: 15px;">
                 <h2 class="panel-title" style="color: #e67e22;">Campfire</h2>
-                <div class="recipe-card" style="margin-top:10px;"><div class="recipe-info"><span class="recipe-icon">🥩</span><div class="recipe-text"><h4>Cook Meat</h4><p>1 Raw Meat, 1 Wood</p></div></div><button id="action-cook" class="btn-craft">Craft</button></div>
+                <div id="recipes-campfire" class="recipe-grid" style="grid-template-columns: 1fr;"></div>
             </div>
             <div id="chest-ui" style="display: none; margin-top: 15px;">
                 <h2 class="panel-title" style="color: #8b5a2b;">Storage Chest</h2>
@@ -97,11 +92,11 @@
                             <div id="equip-pants" class="inv-slot empty" style="width: 100%; height: 44px; font-size: 0.6rem;">Pants</div>
                             <div id="equip-shoes" class="inv-slot empty" style="width: 100%; height: 44px; font-size: 0.6rem;">Shoes</div>
                         </div>
-                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; width: 100%;">
-                            <div id="equip-axe" class="inv-slot empty" style="width: 100%; height: 38px; font-size: 0.5rem;">Axe</div>
-                            <div id="equip-pickaxe" class="inv-slot empty" style="width: 100%; height: 38px; font-size: 0.5rem;">Pick</div>
-                            <div id="equip-weapon" class="inv-slot empty" style="width: 100%; height: 38px; font-size: 0.5rem;">Weap</div>
-                            <div id="equip-backpack" class="inv-slot empty" style="width: 100%; height: 38px; font-size: 0.5rem;">Pack</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%;">
+                            <div id="equip-axe" class="inv-slot empty" style="width: 100%; height: 44px; font-size: 0.55rem;">Axe</div>
+                            <div id="equip-pickaxe" class="inv-slot empty" style="width: 100%; height: 44px; font-size: 0.55rem;">Pick</div>
+                            <div id="equip-weapon" class="inv-slot empty" style="width: 100%; height: 44px; font-size: 0.55rem;">Weap</div>
+                            <div id="equip-backpack" class="inv-slot empty" style="width: 100%; height: 44px; font-size: 0.55rem;">Pack</div>
                         </div>
                     </div>
                 </div>
@@ -123,6 +118,6 @@
 
     </div>
 </div>
-<script type="module" src="js/main.js"></script>
+<script type="module" src="src/js/main.js"></script>
 </body>
 </html>
